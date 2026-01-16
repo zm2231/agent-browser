@@ -975,6 +975,14 @@ mod tests {
             extensions: Vec::new(),
             cdp: None,
             proxy: None,
+            profile: None,
+            ignore_https_errors: false,
+            session_name: None,
+            state: None,
+            persist: false,
+            args: None,
+            user_agent: None,
+            stealth: false,
         }
     }
 

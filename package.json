@@ -11,7 +11,7 @@
     "skills"
   ],
   "bin": {
-    "z-agent-browser": "./bin/z-agent-browser"
+    "z-agent-browser": "bin/z-agent-browser"
   },
   "scripts": {
     "prepare": "husky",

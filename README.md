@@ -2,14 +2,14 @@
 
 Headless browser automation CLI for AI agents. Fast Rust CLI with Node.js fallback.
 
-This is the **enhanced fork** (zm2231/agent-browser) with stealth mode, auto-persistence, profile mode, and more. Published to npm as `z-agent-browser`.
+This is the **enhanced fork** of [vercel-labs/agent-browser](https://github.com/vercel-labs/agent-browser) with stealth mode, auto-persistence, profile mode, and more. Published to npm as `z-agent-browser`.
 
 ## Installation
 
 ### npm (recommended)
 
 ```bash
-npm install -g z-z-agent-browser
+npm install -g z-agent-browser
 z-agent-browser install  # Download Chromium
 ```
 
