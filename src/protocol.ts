@@ -735,7 +735,7 @@ const closeSchema = baseCommandSchema.extend({
 // Tab/Window schemas
 const tabNewSchema = baseCommandSchema.extend({
   action: z.literal('tab_new'),
-  url: z.string().optional(),
+  url: z.string().nullish(),
 });
 
 const tabListSchema = baseCommandSchema.extend({
