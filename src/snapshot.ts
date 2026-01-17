@@ -221,6 +221,12 @@ function processAriaTree(ariaTree: string, refs: RefMap, options: SnapshotOption
   // For interactive-only mode, we collect just interactive elements
   if (options.interactive) {
     for (const line of lines) {
+      // Check max depth first
+      if (options.maxDepth !== undefined) {
+        const depth = getIndentLevel(line);
+        if (depth > options.maxDepth) continue;
+      }
+
       const match = line.match(/^(\s*-\s*)(\w+)(?:\s+"([^"]*)")?(.*)$/);
       if (!match) continue;
 
