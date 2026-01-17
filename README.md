@@ -886,6 +886,38 @@ z-agent-browser open "https://github.com"  # Already logged in!
 | Saved passwords | No (session cookies only) | Yes (real Chrome) |
 | Best for | Background automation | Real Chrome, saved passwords, CAPTCHA |
 
+### Gmail/Google Login (Hybrid Workflow)
+
+Google detects Playwright (even stealth mode) and blocks login. Solution: login via real Chrome CDP, capture state, use in Playwright.
+
+```bash
+# 1. Copy your Chrome profile (one-time)
+cp -R "$HOME/Library/Application Support/Google/Chrome" ~/.z-agent-browser/cdp-profile
+
+# 2. Launch real Chrome with CDP
+killall "Google Chrome" 2>/dev/null || true
+"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+  --remote-debugging-port=9222 \
+  --user-data-dir="$HOME/.z-agent-browser/cdp-profile" &
+
+# 3. Connect and verify CDP is working
+z-agent-browser connect 9222
+z-agent-browser open "https://mail.google.com"
+# If not logged in, login manually in the Chrome window
+
+# 4. Save state for future use
+z-agent-browser state save ~/.z-agent-browser/gmail-state.json
+z-agent-browser close
+killall "Google Chrome"
+
+# 5. Now use headless stealth with saved state
+z-agent-browser start --stealth
+z-agent-browser state load ~/.z-agent-browser/gmail-state.json
+z-agent-browser open "https://mail.google.com"  # Logged in!
+```
+
+**Why this works:** Google validates the session during login (detecting Playwright), but once you have valid cookies from real Chrome, Playwright can use them.
+
 ### Custom User-Agent
 
 ```bash
