@@ -325,7 +325,39 @@ pub fn parse_command(args: &[String], flags: &Flags) -> Result<Value, ParseError
         "eval" => Ok(json!({ "id": id, "action": "evaluate", "script": rest.join(" ") })),
 
         // === Close ===
-        "close" | "quit" | "exit" => Ok(json!({ "id": id, "action": "close" })),
+        "close" | "quit" | "exit" | "stop" => Ok(json!({ "id": id, "action": "close" })),
+
+        // === Start (explicit browser configuration) ===
+        "start" => {
+            let mut cmd = json!({
+                "id": id,
+                "action": "configure",
+                "headless": !flags.headed,
+                "stealth": flags.stealth
+            });
+            if let Some(ref profile) = flags.profile {
+                cmd["profile"] = json!(profile);
+            }
+            if let Some(ref proxy) = flags.proxy {
+                cmd["proxy"] = json!(proxy);
+            }
+            if let Some(ref ua) = flags.user_agent {
+                cmd["userAgent"] = json!(ua);
+            }
+            if let Some(ref args) = flags.args {
+                cmd["args"] = json!(args);
+            }
+            if flags.ignore_https_errors {
+                cmd["ignoreHTTPSErrors"] = json!(true);
+            }
+            if let Some(ref state) = flags.state {
+                cmd["storageState"] = json!(state);
+            }
+            Ok(cmd)
+        }
+
+        // === Status (get daemon configuration) ===
+        "status" => Ok(json!({ "id": id, "action": "status" })),
 
         // === Connect (CDP) ===
         "connect" => {

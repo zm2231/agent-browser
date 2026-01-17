@@ -528,7 +528,8 @@ export async function handler() {
 Connect to an existing browser via Chrome DevTools Protocol:
 
 ```bash
-# Start Chrome with: google-chrome --remote-debugging-port=9222
+# Start Chrome with remote debugging
+google-chrome --remote-debugging-port=9222
 
 # Connect once, then run commands without --cdp
 z-agent-browser connect 9222
@@ -545,6 +546,18 @@ This enables control of:
 - Chrome/Chromium instances with remote debugging
 - WebView2 applications
 - Any browser exposing a CDP endpoint
+
+**Important:** In CDP mode, headless/headed is determined by how Chrome was launched, not by z-agent-browser. The `--headed` flag has no effect when connecting via CDP.
+
+```bash
+# Headed CDP (visible browser)
+google-chrome --remote-debugging-port=9222 &
+
+# Headless CDP (no window) - use --headless=new flag when launching Chrome
+google-chrome --headless=new --remote-debugging-port=9222 &
+```
+
+**For headless automation with your logins**, use Profile Mode instead (see above).
 
 ## Playwright MCP Mode (Experimental)
 
@@ -816,20 +829,40 @@ Use explicit state file:
 z-agent-browser --state ~/github-auth.json open "https://github.com"
 ```
 
-### Profile Mode
+### Profile Mode (Headless with Your Logins)
 
-Use a persistent Chrome profile directory; keeps extensions, bookmarks, passwords:
+Use a persistent Chrome profile directory to run **headless** with all your existing logins, extensions, and passwords:
 
 ```bash
-z-agent-browser --profile ~/.browser/my-profile open "https://example.com" --headed
+# 1. Copy your Chrome profile (one-time setup)
+cp -R "$HOME/Library/Application Support/Google/Chrome" ~/.z-agent-browser/chrome-profile
+
+# 2. Run headless with your logins (DEFAULT - no browser window)
+z-agent-browser --profile ~/.z-agent-browser/chrome-profile open "https://github.com"
+# You're logged in! No visible browser.
+
+# 3. Or run headed if you need to see the browser
+z-agent-browser --profile ~/.z-agent-browser/chrome-profile --headed open "https://github.com"
 ```
 
-Profile mode stores all Chrome data in the specified directory. Useful for:
-- Password managers and extensions
-- Consistent browser fingerprint
-- Bookmarks and history persistence
+**Key points:**
+- **Headless by default** - no `--headed` flag needed for background automation
+- Uses a **COPY** of your profile - your real Chrome data is safe
+- Keeps extensions, bookmarks, passwords, cookies, localStorage
+- Profile location: `~/.z-agent-browser/chrome-profile` (recommended)
+- Cannot combine with CDP mode
 
-Cannot combine with CDP mode.
+**Headless Limitation:** Google, Gmail, and other strict sites detect headless Chromium and invalidate sessions. For these sites, use `--headed` or CDP Mode with real Chrome.app.
+
+**Profile Mode vs CDP Mode:**
+
+| Feature | Profile Mode | CDP Mode |
+|---------|--------------|----------|
+| Command | `--profile <path>` | `--cdp <port>` or `connect <port>` |
+| Headless support | Yes (default) | Depends on how Chrome was launched |
+| Profile data | Uses COPY (safe) | Uses running Chrome's profile |
+| Browser process | Playwright launches Chromium | Connects to existing Chrome |
+| Best for | Background automation with logins | Interactive debugging, user's actual browser |
 
 ### Custom User-Agent
 

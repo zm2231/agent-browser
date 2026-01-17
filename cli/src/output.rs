@@ -131,6 +131,29 @@ pub fn print_response(resp: &Response, json_mode: bool) {
             println!("{} Browser closed", color::success_indicator());
             return;
         }
+        // Status
+        if data.get("launched").is_some() {
+            let launched = data.get("launched").and_then(|v| v.as_bool()).unwrap_or(false);
+            if !launched {
+                println!("{} Browser not running", color::dim("○"));
+                return;
+            }
+            let headless = data.get("headless").and_then(|v| v.as_bool()).unwrap_or(true);
+            let stealth = data.get("stealth").and_then(|v| v.as_bool()).unwrap_or(false);
+            let mode = if headless { "headless" } else { "headed" };
+            let stealth_str = if stealth { " + stealth" } else { "" };
+            println!("{} Browser running ({}{})", color::success_indicator(), mode, stealth_str);
+            return;
+        }
+        // Configured (from start command)
+        if data.get("configured").is_some() {
+            let headless = data.get("headless").and_then(|v| v.as_bool()).unwrap_or(true);
+            let stealth = data.get("stealth").and_then(|v| v.as_bool()).unwrap_or(false);
+            let mode = if headless { "headless" } else { "headed" };
+            let stealth_str = if stealth { " + stealth" } else { "" };
+            println!("{} Browser started ({}{})", color::success_indicator(), mode, stealth_str);
+            return;
+        }
         // Recording start (has "started" field)
         if let Some(started) = data.get("started").and_then(|v| v.as_bool()) {
             if started {
@@ -636,6 +659,62 @@ Examples:
   z-agent-browser eval "document.querySelectorAll('a').length"
 "##,
 
+        // === Browser Lifecycle ===
+        "start" => r##"
+z-agent-browser start - Start browser with specific configuration
+
+Usage: z-agent-browser start [options]
+
+Starts (or restarts) the browser with the specified configuration.
+If browser is already running with different settings, it will restart.
+
+Options:
+  --headed             Show browser window (default: headless)
+  --stealth            Enable anti-detection mode (for strict sites)
+  --profile <path>     Use Chrome profile directory
+
+Global Options:
+  --json               Output as JSON
+  --session <name>     Use specific session
+
+Examples:
+  z-agent-browser start                          # Headless (default)
+  z-agent-browser start --headed                 # Visible browser
+  z-agent-browser start --stealth                # Anti-detection mode
+  z-agent-browser start --headed --stealth       # Visible + stealth
+  z-agent-browser start --profile ~/.z-agent-browser/chrome-profile
+"##,
+        "status" => r##"
+z-agent-browser status - Check browser status and configuration
+
+Usage: z-agent-browser status
+
+Shows current browser state: whether running, headless/headed, stealth mode.
+
+Global Options:
+  --json               Output as JSON (recommended for parsing)
+  --session <name>     Use specific session
+
+Examples:
+  z-agent-browser status
+  z-agent-browser status --json
+  # Output: {"success":true,"data":{"launched":true,"headless":true,"stealth":false}}
+"##,
+        "stop" => r##"
+z-agent-browser stop - Stop the browser
+
+Usage: z-agent-browser stop
+
+Stops the browser instance. Alias for 'close'.
+
+Global Options:
+  --json               Output as JSON
+  --session <name>     Use specific session
+
+Examples:
+  z-agent-browser stop
+"##,
+
         // === Close ===
         "close" | "quit" | "exit" => r##"
 z-agent-browser close - Close the browser
@@ -644,7 +723,7 @@ Usage: z-agent-browser close
 
 Closes the browser instance for the current session.
 
-Aliases: quit, exit
+Aliases: quit, exit, stop
 
 Global Options:
   --json               Output as JSON
@@ -1175,6 +1254,11 @@ pub fn print_help() {
 z-agent-browser - fast browser automation CLI for AI agents
 
 Usage: z-agent-browser <command> [args] [options]
+
+Browser Lifecycle:
+  start [--headed] [--stealth]  Start/restart browser with config
+  status                     Check browser mode (headless/stealth/etc)
+  stop                       Stop browser (alias: close)
 
 Core Commands:
   open <url>                 Navigate to URL

@@ -99,11 +99,35 @@ export class BrowserManager {
   private recordingOutputPath: string = '';
   private recordingTempDir: string = '';
 
+  // Current launch configuration for status reporting
+  private launchConfig: {
+    headless: boolean;
+    stealth: boolean;
+    profile?: string;
+    cdpPort?: number | string;
+  } = { headless: true, stealth: false };
+
   /**
    * Check if browser is launched
    */
   isLaunched(): boolean {
     return this.browser !== null || this.isPersistentContext;
+  }
+
+  /**
+   * Get current browser status and configuration
+   */
+  getStatus(): {
+    launched: boolean;
+    headless: boolean;
+    stealth: boolean;
+    profile?: string;
+    cdpPort?: number | string;
+  } {
+    return {
+      launched: this.isLaunched(),
+      ...this.launchConfig,
+    };
   }
 
   /**
@@ -761,6 +785,10 @@ export class BrowserManager {
 
     if (useStealth && browserType === 'chromium') {
       stealthChromium.use(StealthPlugin());
+      // Ensure args is always an array - stealth plugin assumes this
+      if (!options.args) {
+        options.args = [];
+      }
     }
 
     const launcher =
@@ -834,6 +862,12 @@ export class BrowserManager {
     this.pages.push(page);
     this.activePageIndex = 0;
     this.setupPageTracking(page);
+
+    this.launchConfig = {
+      headless: options.headless ?? true,
+      stealth: useStealth,
+      profile: options.profile,
+    };
   }
 
   /**
@@ -890,8 +924,13 @@ export class BrowserManager {
       }
 
       this.activePageIndex = 0;
+
+      this.launchConfig = {
+        headless: false,
+        stealth: false,
+        cdpPort: cdpEndpoint,
+      };
     } catch (error) {
-      // Clean up browser connection if validation or setup failed
       await browser.close().catch(() => {});
       throw error;
     }

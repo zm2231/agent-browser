@@ -102,6 +102,7 @@ import type {
   RecordingStartCommand,
   RecordingStopCommand,
   RecordingRestartCommand,
+  ConfigureCommand,
   NavigateData,
   ScreenshotData,
   EvaluateData,
@@ -197,6 +198,10 @@ export async function executeCommand(command: Command, browser: BrowserManager):
     switch (command.action) {
       case 'launch':
         return await handleLaunch(command, browser);
+      case 'configure':
+        return await handleConfigure(command, browser);
+      case 'status':
+        return await handleStatus(command, browser);
       case 'navigate':
         return await handleNavigate(command, browser);
       case 'click':
@@ -457,6 +462,46 @@ async function handleLaunch(
 ): Promise<Response> {
   await browser.launch(command);
   return successResponse(command.id, { launched: true });
+}
+
+async function handleConfigure(
+  command: ConfigureCommand,
+  browser: BrowserManager
+): Promise<Response> {
+  if (browser.isLaunched()) {
+    await browser.close();
+  }
+
+  const launchOptions: any = {
+    id: command.id,
+    action: 'launch',
+    headless: command.headless ?? true,
+    profile: command.profile,
+    userAgent: command.userAgent,
+    args: command.args,
+    ignoreHTTPSErrors: command.ignoreHTTPSErrors,
+    storageState: command.storageState,
+    proxy: command.proxy,
+  };
+
+  if (command.stealth) {
+    process.env.AGENT_BROWSER_STEALTH = '1';
+  } else {
+    delete process.env.AGENT_BROWSER_STEALTH;
+  }
+
+  await browser.launch(launchOptions);
+  return successResponse(command.id, {
+    configured: true,
+    ...browser.getStatus(),
+  });
+}
+
+async function handleStatus(
+  command: { id: string; action: string },
+  browser: BrowserManager
+): Promise<Response> {
+  return successResponse(command.id, browser.getStatus());
 }
 
 async function handleNavigate(

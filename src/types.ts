@@ -922,7 +922,25 @@ export type Command =
   | ScreencastStopCommand
   | InputMouseCommand
   | InputKeyboardCommand
-  | InputTouchCommand;
+  | InputTouchCommand
+  | ConfigureCommand
+  | StatusCommand;
+
+export interface ConfigureCommand extends BaseCommand {
+  action: 'configure';
+  headless?: boolean;
+  stealth?: boolean;
+  profile?: string;
+  userAgent?: string;
+  args?: string;
+  ignoreHTTPSErrors?: boolean;
+  storageState?: string;
+  proxy?: string;
+}
+
+export interface StatusCommand extends BaseCommand {
+  action: 'status';
+}
 
 // Response types
 export interface SuccessResponse<T = unknown> {

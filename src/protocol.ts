@@ -667,6 +667,22 @@ const inputTouchSchema = baseCommandSchema.extend({
   modifiers: z.number().optional(),
 });
 
+const configureSchema = baseCommandSchema.extend({
+  action: z.literal('configure'),
+  headless: z.boolean().optional(),
+  stealth: z.boolean().optional(),
+  profile: z.string().optional(),
+  userAgent: z.string().optional(),
+  args: z.string().optional(),
+  ignoreHTTPSErrors: z.boolean().optional(),
+  storageState: z.string().optional(),
+  proxy: z.string().optional(),
+});
+
+const statusSchema = baseCommandSchema.extend({
+  action: z.literal('status'),
+});
+
 const pressSchema = baseCommandSchema.extend({
   action: z.literal('press'),
   key: z.string().min(1),
@@ -886,6 +902,8 @@ const commandSchema = z.discriminatedUnion('action', [
   inputMouseSchema,
   inputKeyboardSchema,
   inputTouchSchema,
+  configureSchema,
+  statusSchema,
 ]);
 
 // Parse result type
