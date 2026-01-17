@@ -179,6 +179,12 @@ export class PlaywrightMCPBackend {
   }
 
   async launch(): Promise<void> {
+    if (!process.env.PLAYWRIGHT_MCP_EXTENSION_TOKEN) {
+      throw new Error(
+        'PLAYWRIGHT_MCP_EXTENSION_TOKEN is required for MCP mode.\n' +
+          'Get it from the Playwright MCP Bridge Chrome extension (click the extension icon).'
+      );
+    }
     await this.client.connect();
     await this.snapshot();
   }
