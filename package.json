@@ -1,6 +1,6 @@
 {
   "name": "z-agent-browser",
-  "version": "0.5.8",
+  "version": "0.5.10",
   "description": "Enhanced browser automation CLI for AI agents - stealth mode, auto-persistence, profile mode",
   "type": "module",
   "main": "dist/daemon.js",
