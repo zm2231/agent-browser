@@ -475,9 +475,10 @@ describe('parseCommand', () => {
       expect(result.success).toBe(false);
     });
 
-    it('should reject launch with non-numeric cdpPort', () => {
-      const result = parseCommand(cmd({ id: '1', action: 'launch', cdpPort: 'invalid' }));
-      expect(result.success).toBe(false);
+    it('should accept launch with string cdpPort (for CLI convenience)', () => {
+      // Schema allows z.union([z.number().positive(), z.string()]) for cdpPort
+      const result = parseCommand(cmd({ id: '1', action: 'launch', cdpPort: '9222' }));
+      expect(result.success).toBe(true);
     });
   });
 
