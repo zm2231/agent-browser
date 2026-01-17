@@ -88,6 +88,20 @@ function loadPersistState(): string | undefined {
   return undefined;
 }
 
+const DEFAULT_CDP_PORT = 9222;
+
+async function checkCdpAvailable(port: number = DEFAULT_CDP_PORT): Promise<boolean> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 500);
+    const res = await fetch(`http://localhost:${port}/json/version`, { signal: controller.signal });
+    clearTimeout(timeout);
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 async function savePersistState(browser: BrowserManager): Promise<void> {
   if (!persistEnabled) return;
   const statePath = getPersistPath();
@@ -313,36 +327,50 @@ export async function startDaemon(options?: { streamPort?: number }): Promise<vo
               parseResult.command.action !== 'launch' &&
               parseResult.command.action !== 'close'
             ) {
-              const extensions = process.env.AGENT_BROWSER_EXTENSIONS
-                ? process.env.AGENT_BROWSER_EXTENSIONS.split(',')
-                    .map((p) => p.trim())
-                    .filter(Boolean)
-                : undefined;
-              const persistState = loadPersistState();
-              const headedEnv =
-                process.env.AGENT_BROWSER_HEADED === '1' ||
-                process.env.AGENT_BROWSER_HEADED === 'true';
-              const ignoreHttpsErrors =
-                process.env.AGENT_BROWSER_IGNORE_HTTPS_ERRORS === '1' ||
-                process.env.AGENT_BROWSER_IGNORE_HTTPS_ERRORS === 'true';
-              const userAgent = process.env.AGENT_BROWSER_USER_AGENT;
-              const argsEnv = process.env.AGENT_BROWSER_ARGS
-                ? process.env.AGENT_BROWSER_ARGS.split(',')
-                    .map((a) => a.trim())
-                    .filter(Boolean)
-                : undefined;
-              await browser.launch({
-                id: 'auto',
-                action: 'launch',
-                headless: !headedEnv,
-                executablePath: getDefaultChromePath(),
-                extensions: extensions,
-                storageState: persistState,
-                profile: process.env.AGENT_BROWSER_PROFILE,
-                ignoreHTTPSErrors: ignoreHttpsErrors,
-                userAgent: userAgent,
-                args: argsEnv,
-              });
+              // Try CDP first - if Chrome is running with debugging, connect to it
+              const cdpPort = parseInt(
+                process.env.AGENT_BROWSER_CDP_PORT || String(DEFAULT_CDP_PORT),
+                10
+              );
+              if (await checkCdpAvailable(cdpPort)) {
+                await browser.launch({
+                  id: 'auto-cdp',
+                  action: 'launch',
+                  cdpPort: cdpPort,
+                });
+              } else {
+                // Fall back to launching fresh browser
+                const extensions = process.env.AGENT_BROWSER_EXTENSIONS
+                  ? process.env.AGENT_BROWSER_EXTENSIONS.split(',')
+                      .map((p) => p.trim())
+                      .filter(Boolean)
+                  : undefined;
+                const persistState = loadPersistState();
+                const headedEnv =
+                  process.env.AGENT_BROWSER_HEADED === '1' ||
+                  process.env.AGENT_BROWSER_HEADED === 'true';
+                const ignoreHttpsErrors =
+                  process.env.AGENT_BROWSER_IGNORE_HTTPS_ERRORS === '1' ||
+                  process.env.AGENT_BROWSER_IGNORE_HTTPS_ERRORS === 'true';
+                const userAgent = process.env.AGENT_BROWSER_USER_AGENT;
+                const argsEnv = process.env.AGENT_BROWSER_ARGS
+                  ? process.env.AGENT_BROWSER_ARGS.split(',')
+                      .map((a) => a.trim())
+                      .filter(Boolean)
+                  : undefined;
+                await browser.launch({
+                  id: 'auto',
+                  action: 'launch',
+                  headless: !headedEnv,
+                  executablePath: getDefaultChromePath(),
+                  extensions: extensions,
+                  storageState: persistState,
+                  profile: process.env.AGENT_BROWSER_PROFILE,
+                  ignoreHTTPSErrors: ignoreHttpsErrors,
+                  userAgent: userAgent,
+                  args: argsEnv,
+                });
+              }
             }
 
             if (parseResult.command.action === 'close') {
