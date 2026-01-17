@@ -15,6 +15,22 @@ z-agent-browser fill @e2 "text"   # Fill input by ref
 z-agent-browser close             # Close browser
 ```
 
+## Important Notes
+
+**Daemon behavior**: The browser runs as a persistent daemon. Environment variables (headed, stealth, etc.) are set at daemon startup and cannot be changed mid-session.
+
+**Mode switching**: Close the browser to switch between headed/headless modes:
+```bash
+z-agent-browser open "https://site.com" --headed   # Headed session
+z-agent-browser state save ~/.browser/auth.json
+z-agent-browser close                              # Kill daemon
+
+z-agent-browser state load ~/.browser/auth.json    # Fresh daemon (headless)
+z-agent-browser open "https://site.com"            # Cookies preserved
+```
+
+**When to use headed mode**: Use `--headed` when you need the user to log in manually, solve CAPTCHAs, or verify visual state.
+
 ## Core workflow
 
 1. Navigate: `z-agent-browser open <url>`
@@ -277,6 +293,22 @@ Connect to existing Chrome:
 ```bash
 z-agent-browser connect 9222   # Connect once
 z-agent-browser snapshot       # No --cdp needed after
+```
+
+## Mode Switching
+
+The daemon must be closed to switch between headed/headless or change env vars like stealth:
+
+```bash
+# Headed session (for manual login)
+z-agent-browser open "https://site.com/login" --headed
+# User logs in manually...
+z-agent-browser state save ~/.browser/auth.json
+z-agent-browser close   # Kills daemon
+
+# Headless session (fresh daemon, cookies preserved)
+z-agent-browser state load ~/.browser/auth.json
+z-agent-browser open "https://site.com/dashboard"  # Headless, logged in
 ```
 
 ## Environment Variables
