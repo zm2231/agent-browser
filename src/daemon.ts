@@ -3,9 +3,14 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { BrowserManager } from './browser.js';
-import { parseCommand, serializeResponse, errorResponse } from './protocol.js';
+import { parseCommand, serializeResponse, errorResponse, successResponse } from './protocol.js';
 import { executeCommand } from './actions.js';
 import { StreamServer } from './stream-server.js';
+import { PlaywrightMCPBackend } from './playwright-mcp.js';
+
+type BackendType = 'native' | 'playwright-mcp';
+const backendType: BackendType =
+  process.env.AGENT_BROWSER_BACKEND === 'playwright-mcp' ? 'playwright-mcp' : 'native';
 
 // Platform detection
 const isWindows = process.platform === 'win32';
@@ -83,6 +88,18 @@ function getPortForSession(session: string): number {
 }
 
 /**
+ * Get the runtime directory for socket/pid files
+ * Uses ~/.z-agent-browser/run/ for cross-platform consistency
+ */
+function getRuntimeDir(): string {
+  const dir = path.join(os.homedir(), '.z-agent-browser', 'run');
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+  return dir;
+}
+
+/**
  * Get the socket path for the current session (Unix) or port (Windows)
  */
 export function getSocketPath(session?: string): string {
@@ -90,7 +107,7 @@ export function getSocketPath(session?: string): string {
   if (isWindows) {
     return String(getPortForSession(sess));
   }
-  return path.join(os.tmpdir(), `z-agent-browser-${sess}.sock`);
+  return path.join(getRuntimeDir(), `${sess}.sock`);
 }
 
 /**
@@ -98,7 +115,7 @@ export function getSocketPath(session?: string): string {
  */
 export function getPortFile(session?: string): string {
   const sess = session ?? currentSession;
-  return path.join(os.tmpdir(), `z-agent-browser-${sess}.port`);
+  return path.join(getRuntimeDir(), `${sess}.port`);
 }
 
 /**
@@ -106,7 +123,7 @@ export function getPortFile(session?: string): string {
  */
 export function getPidFile(session?: string): string {
   const sess = session ?? currentSession;
-  return path.join(os.tmpdir(), `z-agent-browser-${sess}.pid`);
+  return path.join(getRuntimeDir(), `${sess}.pid`);
 }
 
 /**
@@ -139,7 +156,7 @@ export function getConnectionInfo(
   if (isWindows) {
     return { type: 'tcp', port: getPortForSession(sess) };
   }
-  return { type: 'unix', path: path.join(os.tmpdir(), `z-agent-browser-${sess}.sock`) };
+  return { type: 'unix', path: path.join(getRuntimeDir(), `${sess}.sock`) };
 }
 
 /**
@@ -168,7 +185,7 @@ export function cleanupSocket(session?: string): void {
  */
 export function getStreamPortFile(session?: string): string {
   const sess = session ?? currentSession;
-  return path.join(os.tmpdir(), `z-agent-browser-${sess}.stream`);
+  return path.join(getRuntimeDir(), `${sess}.stream`);
 }
 
 /**
@@ -176,24 +193,23 @@ export function getStreamPortFile(session?: string): string {
  * @param options.streamPort Port for WebSocket stream server (0 to disable)
  */
 export async function startDaemon(options?: { streamPort?: number }): Promise<void> {
-  // Clean up any stale socket
   cleanupSocket();
 
-  const browser = new BrowserManager();
+  const browser = backendType === 'playwright-mcp' ? null : new BrowserManager();
+  const mcpBackend = backendType === 'playwright-mcp' ? new PlaywrightMCPBackend() : null;
   let shuttingDown = false;
+  let mcpInitialized = false;
 
-  // Start stream server if port is specified (or use default if env var is set)
+  // Start stream server if port is specified (native backend only)
   const streamPort =
     options?.streamPort ??
     (process.env.AGENT_BROWSER_STREAM_PORT
       ? parseInt(process.env.AGENT_BROWSER_STREAM_PORT, 10)
       : 0);
 
-  if (streamPort > 0) {
+  if (streamPort > 0 && browser) {
     streamServer = new StreamServer(browser, streamPort);
     await streamServer.start();
-
-    // Write stream port to file for clients to discover
     const streamPortFile = getStreamPortFile();
     fs.writeFileSync(streamPortFile, streamPort.toString());
   }
@@ -221,63 +237,86 @@ export async function startDaemon(options?: { streamPort?: number }): Promise<vo
             continue;
           }
 
-          // Auto-launch browser if not already launched and this isn't a launch command
-          if (
-            !browser.isLaunched() &&
-            parseResult.command.action !== 'launch' &&
-            parseResult.command.action !== 'close'
-          ) {
-            const extensions = process.env.AGENT_BROWSER_EXTENSIONS
-              ? process.env.AGENT_BROWSER_EXTENSIONS.split(',')
-                  .map((p) => p.trim())
-                  .filter(Boolean)
-              : undefined;
-            const persistState = loadPersistState();
-            const headedEnv =
-              process.env.AGENT_BROWSER_HEADED === '1' ||
-              process.env.AGENT_BROWSER_HEADED === 'true';
-            const ignoreHttpsErrors =
-              process.env.AGENT_BROWSER_IGNORE_HTTPS_ERRORS === '1' ||
-              process.env.AGENT_BROWSER_IGNORE_HTTPS_ERRORS === 'true';
-            const userAgent = process.env.AGENT_BROWSER_USER_AGENT;
-            const argsEnv = process.env.AGENT_BROWSER_ARGS
-              ? process.env.AGENT_BROWSER_ARGS.split(',')
-                  .map((a) => a.trim())
-                  .filter(Boolean)
-              : undefined;
-            await browser.launch({
-              id: 'auto',
-              action: 'launch',
-              headless: !headedEnv,
-              executablePath: process.env.AGENT_BROWSER_EXECUTABLE_PATH,
-              extensions: extensions,
-              storageState: persistState,
-              profile: process.env.AGENT_BROWSER_PROFILE,
-              ignoreHTTPSErrors: ignoreHttpsErrors,
-              userAgent: userAgent,
-              args: argsEnv,
-            });
-          }
+          if (mcpBackend) {
+            // playwright-mcp backend
+            if (!mcpInitialized && parseResult.command.action !== 'close') {
+              await mcpBackend.launch();
+              mcpInitialized = true;
+            }
 
-          // Handle close command specially
-          if (parseResult.command.action === 'close') {
-            await savePersistState(browser);
+            if (parseResult.command.action === 'close') {
+              await mcpBackend.close();
+              socket.write(serializeResponse(successResponse(parseResult.command.id, {})) + '\n');
+              if (!shuttingDown) {
+                shuttingDown = true;
+                setTimeout(() => {
+                  server.close();
+                  cleanupSocket();
+                  process.exit(0);
+                }, 100);
+              }
+              return;
+            }
+
+            const response = await executeMCPCommand(parseResult.command, mcpBackend);
+            socket.write(serializeResponse(response) + '\n');
+          } else if (browser) {
+            // Native Playwright backend
+            if (
+              !browser.isLaunched() &&
+              parseResult.command.action !== 'launch' &&
+              parseResult.command.action !== 'close'
+            ) {
+              const extensions = process.env.AGENT_BROWSER_EXTENSIONS
+                ? process.env.AGENT_BROWSER_EXTENSIONS.split(',')
+                    .map((p) => p.trim())
+                    .filter(Boolean)
+                : undefined;
+              const persistState = loadPersistState();
+              const headedEnv =
+                process.env.AGENT_BROWSER_HEADED === '1' ||
+                process.env.AGENT_BROWSER_HEADED === 'true';
+              const ignoreHttpsErrors =
+                process.env.AGENT_BROWSER_IGNORE_HTTPS_ERRORS === '1' ||
+                process.env.AGENT_BROWSER_IGNORE_HTTPS_ERRORS === 'true';
+              const userAgent = process.env.AGENT_BROWSER_USER_AGENT;
+              const argsEnv = process.env.AGENT_BROWSER_ARGS
+                ? process.env.AGENT_BROWSER_ARGS.split(',')
+                    .map((a) => a.trim())
+                    .filter(Boolean)
+                : undefined;
+              await browser.launch({
+                id: 'auto',
+                action: 'launch',
+                headless: !headedEnv,
+                executablePath: process.env.AGENT_BROWSER_EXECUTABLE_PATH,
+                extensions: extensions,
+                storageState: persistState,
+                profile: process.env.AGENT_BROWSER_PROFILE,
+                ignoreHTTPSErrors: ignoreHttpsErrors,
+                userAgent: userAgent,
+                args: argsEnv,
+              });
+            }
+
+            if (parseResult.command.action === 'close') {
+              await savePersistState(browser);
+              const response = await executeCommand(parseResult.command, browser);
+              socket.write(serializeResponse(response) + '\n');
+              if (!shuttingDown) {
+                shuttingDown = true;
+                setTimeout(() => {
+                  server.close();
+                  cleanupSocket();
+                  process.exit(0);
+                }, 100);
+              }
+              return;
+            }
+
             const response = await executeCommand(parseResult.command, browser);
             socket.write(serializeResponse(response) + '\n');
-
-            if (!shuttingDown) {
-              shuttingDown = true;
-              setTimeout(() => {
-                server.close();
-                cleanupSocket();
-                process.exit(0);
-              }, 100);
-            }
-            return;
           }
-
-          const response = await executeCommand(parseResult.command, browser);
-          socket.write(serializeResponse(response) + '\n');
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           socket.write(serializeResponse(errorResponse('error', message)) + '\n');
@@ -317,25 +356,23 @@ export async function startDaemon(options?: { streamPort?: number }): Promise<vo
     process.exit(1);
   });
 
-  // Handle shutdown signals
   const shutdown = async () => {
     if (shuttingDown) return;
     shuttingDown = true;
 
-    // Stop stream server if running
     if (streamServer) {
       await streamServer.stop();
       streamServer = null;
-      // Clean up stream port file
       const streamPortFile = getStreamPortFile();
       try {
         if (fs.existsSync(streamPortFile)) fs.unlinkSync(streamPortFile);
       } catch {
-        // Ignore cleanup errors
+        // Ignore
       }
     }
 
-    await browser.close();
+    if (browser) await browser.close();
+    if (mcpBackend) await mcpBackend.close();
     server.close();
     cleanupSocket();
     process.exit(0);
@@ -367,7 +404,162 @@ export async function startDaemon(options?: { streamPort?: number }): Promise<vo
   process.stdin.resume();
 }
 
-// Run daemon if this is the entry point
+import type { Command, Response } from './types.js';
+
+async function executeMCPCommand(
+  command: Command,
+  backend: PlaywrightMCPBackend
+): Promise<Response> {
+  const { id, action } = command;
+
+  try {
+    switch (action) {
+      case 'launch':
+        await backend.launch();
+        return successResponse(id, { launched: true });
+
+      case 'navigate': {
+        const cmd = command as { url: string };
+        const result = await backend.navigate(cmd.url);
+        return successResponse(id, result);
+      }
+
+      case 'snapshot': {
+        const result = await backend.snapshot();
+        return successResponse(id, result);
+      }
+
+      case 'click': {
+        const cmd = command as {
+          selector: string;
+          button?: 'left' | 'right' | 'middle';
+          clickCount?: number;
+        };
+        await backend.click(cmd.selector, { button: cmd.button, clickCount: cmd.clickCount });
+        return successResponse(id, { clicked: cmd.selector });
+      }
+
+      case 'type': {
+        const cmd = command as { selector: string; text: string; delay?: number };
+        await backend.type(cmd.selector, cmd.text, { delay: cmd.delay });
+        return successResponse(id, { typed: cmd.text });
+      }
+
+      case 'fill': {
+        const cmd = command as { selector: string; value: string };
+        await backend.fill(cmd.selector, cmd.value);
+        return successResponse(id, { filled: cmd.value });
+      }
+
+      case 'hover': {
+        const cmd = command as { selector: string };
+        await backend.hover(cmd.selector);
+        return successResponse(id, { hovered: cmd.selector });
+      }
+
+      case 'press': {
+        const cmd = command as { key: string };
+        await backend.press(cmd.key);
+        return successResponse(id, { pressed: cmd.key });
+      }
+
+      case 'screenshot': {
+        const cmd = command as { path?: string; fullPage?: boolean; format?: 'png' | 'jpeg' };
+        const result = await backend.screenshot({
+          path: cmd.path,
+          fullPage: cmd.fullPage,
+          format: cmd.format,
+        });
+        return successResponse(id, result);
+      }
+
+      case 'evaluate': {
+        const cmd = command as { script: string };
+        const result = await backend.evaluate(cmd.script);
+        return successResponse(id, { result });
+      }
+
+      case 'wait': {
+        const cmd = command as { timeout?: number; selector?: string };
+        if (cmd.timeout) {
+          await backend.wait({ time: cmd.timeout / 1000 });
+        }
+        return successResponse(id, { waited: true });
+      }
+
+      case 'back':
+        await backend.back();
+        return successResponse(id, { navigated: 'back' });
+
+      case 'tab_list': {
+        const result = await backend.listTabs();
+        return successResponse(id, result);
+      }
+
+      case 'tab_new': {
+        const cmd = command as { url?: string };
+        const result = await backend.newTab(cmd.url);
+        return successResponse(id, result);
+      }
+
+      case 'tab_switch': {
+        const cmd = command as { index: number };
+        await backend.switchTab(cmd.index);
+        return successResponse(id, { switched: cmd.index });
+      }
+
+      case 'tab_close': {
+        const cmd = command as { index?: number };
+        await backend.closeTab(cmd.index);
+        return successResponse(id, { closed: true });
+      }
+
+      case 'select': {
+        const cmd = command as { selector: string; values: string | string[] };
+        const values = Array.isArray(cmd.values) ? cmd.values : [cmd.values];
+        await backend.select(cmd.selector, values);
+        return successResponse(id, { selected: values });
+      }
+
+      case 'drag': {
+        const cmd = command as { source: string; target: string };
+        await backend.drag(cmd.source, cmd.target);
+        return successResponse(id, { dragged: true });
+      }
+
+      case 'upload': {
+        const cmd = command as { files: string | string[] };
+        const files = Array.isArray(cmd.files) ? cmd.files : [cmd.files];
+        await backend.upload(files);
+        return successResponse(id, { uploaded: files });
+      }
+
+      case 'dialog': {
+        const cmd = command as { response: 'accept' | 'dismiss'; promptText?: string };
+        await backend.handleDialog(cmd.response === 'accept', cmd.promptText);
+        return successResponse(id, { handled: cmd.response });
+      }
+
+      case 'viewport': {
+        const cmd = command as { width: number; height: number };
+        await backend.resize(cmd.width, cmd.height);
+        return successResponse(id, { resized: true });
+      }
+
+      case 'console': {
+        const messages = await backend.getConsoleMessages();
+        return successResponse(id, { messages });
+      }
+
+      default:
+        return errorResponse(id, `Action "${action}" not supported in playwright-mcp mode`);
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return errorResponse(id, message);
+  }
+}
+
 if (process.argv[1]?.endsWith('daemon.js') || process.env.AGENT_BROWSER_DAEMON === '1') {
   startDaemon().catch((err) => {
     console.error('Daemon error:', err);

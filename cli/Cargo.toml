@@ -1,6 +1,6 @@
 [package]
 name = "z-agent-browser"
-version = "0.5.1"
+version = "0.5.3"
 edition = "2021"
 description = "Enhanced browser automation CLI for AI agents - stealth, persistence, profiles"
 license = "Apache-2.0"
@@ -9,6 +9,7 @@ repository = "https://github.com/zm2231/agent-browser"
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+dirs = "5.0"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

@@ -70,7 +70,7 @@ interface PageError {
  */
 export class BrowserManager {
   private browser: Browser | null = null;
-  private cdpPort: number | null = null;
+  private cdpPort: number | string | null = null;
   private isPersistentContext: boolean = false;
   private contexts: BrowserContext[] = [];
   private pages: Page[] = [];
@@ -716,7 +716,7 @@ export class BrowserManager {
   /**
    * Check if CDP connection needs to be re-established
    */
-  private needsCdpReconnect(cdpPort: number): boolean {
+  private needsCdpReconnect(cdpPort: number | string): boolean {
     if (!this.browser?.isConnected()) return true;
     if (this.cdpPort !== cdpPort) return true;
     if (!this.isCdpConnectionAlive()) return true;
@@ -839,17 +839,29 @@ export class BrowserManager {
   /**
    * Connect to a running browser via CDP (Chrome DevTools Protocol)
    */
-  private async connectViaCDP(cdpPort: number | undefined): Promise<void> {
-    if (!cdpPort) {
-      throw new Error('cdpPort is required for CDP connection');
+  private async connectViaCDP(cdpEndpoint: number | string | undefined): Promise<void> {
+    if (!cdpEndpoint) {
+      throw new Error('cdpEndpoint is required for CDP connection');
     }
 
-    const browser = await chromium.connectOverCDP(`http://localhost:${cdpPort}`).catch(() => {
+    // Support both port numbers and full WebSocket URLs
+    // Examples: 9222, "ws://localhost:19988/cdp?token=xxx", "http://localhost:9222"
+    let browser: Browser;
+
+    try {
+      if (typeof cdpEndpoint === 'number') {
+        browser = await chromium.connectOverCDP(`http://localhost:${cdpEndpoint}`);
+      } else if (cdpEndpoint.startsWith('ws://') || cdpEndpoint.startsWith('wss://')) {
+        browser = await chromium.connectOverCDP({ wsEndpoint: cdpEndpoint });
+      } else {
+        browser = await chromium.connectOverCDP(cdpEndpoint);
+      }
+    } catch (err) {
       throw new Error(
-        `Failed to connect via CDP on port ${cdpPort}. ` +
-          `Make sure the app is running with --remote-debugging-port=${cdpPort}`
+        `Failed to connect via CDP to ${cdpEndpoint}. ` +
+          `Error: ${err instanceof Error ? err.message : String(err)}`
       );
-    });
+    }
 
     // Validate and set up state, cleaning up browser connection if anything fails
     try {
@@ -865,7 +877,7 @@ export class BrowserManager {
 
       // All validation passed - commit state
       this.browser = browser;
-      this.cdpPort = cdpPort;
+      this.cdpPort = cdpEndpoint;
 
       for (const context of contexts) {
         this.contexts.push(context);

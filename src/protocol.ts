@@ -18,7 +18,7 @@ const launchSchema = baseCommandSchema.extend({
     })
     .optional(),
   browser: z.enum(['chromium', 'firefox', 'webkit']).optional(),
-  cdpPort: z.number().positive().optional(),
+  cdpPort: z.union([z.number().positive(), z.string()]).optional(),
   executablePath: z.string().optional(),
   extensions: z.array(z.string()).optional(),
   headers: z.record(z.string()).optional(),

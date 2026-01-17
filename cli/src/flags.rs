@@ -19,6 +19,7 @@ pub struct Flags {
     pub args: Option<String>,
     pub user_agent: Option<String>,
     pub stealth: bool,
+    pub backend: Option<String>,
 }
 
 pub fn parse_flags(args: &[String]) -> Flags {
@@ -46,6 +47,7 @@ pub fn parse_flags(args: &[String]) -> Flags {
         args: env::var("AGENT_BROWSER_ARGS").ok(),
         user_agent: env::var("AGENT_BROWSER_USER_AGENT").ok(),
         stealth: env::var("AGENT_BROWSER_STEALTH").map(|v| v == "1" || v == "true").unwrap_or(false),
+        backend: env::var("AGENT_BROWSER_BACKEND").ok(),
     };
 
     let mut i = 0;
@@ -124,6 +126,12 @@ pub fn parse_flags(args: &[String]) -> Flags {
                 }
             }
             "--stealth" => flags.stealth = true,
+            "--backend" => {
+                if let Some(b) = args.get(i + 1) {
+                    flags.backend = Some(b.clone());
+                    i += 1;
+                }
+            }
             _ => {}
         }
         i += 1;
@@ -138,7 +146,7 @@ pub fn clean_args(args: &[String]) -> Vec<String> {
     // Global flags that should be stripped from command args
     const GLOBAL_FLAGS: &[&str] = &["--json", "--full", "--headed", "--debug", "--ignore-https-errors", "--persist", "--stealth"];
     // Global flags that take a value (need to skip the next arg too)
-    const GLOBAL_FLAGS_WITH_VALUE: &[&str] = &["--session", "--headers", "--executable-path", "--cdp", "--extension", "--proxy", "--profile", "--session-name", "--state", "--args", "--user-agent"];
+    const GLOBAL_FLAGS_WITH_VALUE: &[&str] = &["--session", "--headers", "--executable-path", "--cdp", "--extension", "--proxy", "--profile", "--session-name", "--state", "--args", "--user-agent", "--backend"];
 
     for arg in args.iter() {
         if skip_next {

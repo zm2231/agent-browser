@@ -329,15 +329,20 @@ pub fn parse_command(args: &[String], flags: &Flags) -> Result<Value, ParseError
 
         // === Connect (CDP) ===
         "connect" => {
-            let port_str = rest.get(0).ok_or_else(|| ParseError::MissingArguments {
+            let endpoint = rest.get(0).ok_or_else(|| ParseError::MissingArguments {
                 context: "connect".to_string(),
-                usage: "connect <port>",
+                usage: "connect <port|ws://url>",
             })?;
-            let port: u16 = port_str.parse().map_err(|_| ParseError::MissingArguments {
-                context: format!("connect: invalid port '{}'", port_str),
-                usage: "connect <port>",
-            })?;
-            Ok(json!({ "id": id, "action": "launch", "cdpPort": port }))
+            let cdp_value: serde_json::Value = if endpoint.starts_with("ws://") || endpoint.starts_with("wss://") {
+                json!(endpoint)
+            } else {
+                let port: u16 = endpoint.parse().map_err(|_| ParseError::MissingArguments {
+                    context: format!("connect: invalid endpoint '{}'. Use port number or ws:// URL", endpoint),
+                    usage: "connect <port|ws://url>",
+                })?;
+                json!(port)
+            };
+            Ok(json!({ "id": id, "action": "launch", "cdpPort": cdp_value }))
         }
 
         // === Get ===
@@ -983,6 +988,7 @@ mod tests {
             args: None,
             user_agent: None,
             stealth: false,
+            backend: None,
         }
     }
 

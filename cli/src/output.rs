@@ -1265,7 +1265,7 @@ Options:
   --json                     JSON output
   --full, -f                 Full page screenshot
   --headed                   Show browser window (not headless)
-  --cdp <port>               Connect via CDP (Chrome DevTools Protocol)
+  --cdp <port|url>           Connect via CDP (port or ws:// URL for playwriter)
   --debug                    Debug output
   --version, -V              Show version
 

@@ -16,8 +16,8 @@ z-agent-browser install  # Download Chromium
 ### From Source
 
 ```bash
-git clone https://github.com/zm2231/z-agent-browser
-cd z-agent-browser
+git clone https://github.com/zm2231/agent-browser
+cd agent-browser
 pnpm install
 pnpm build
 pnpm build:native   # Requires Rust (https://rustup.rs)
@@ -29,7 +29,7 @@ z-agent-browser install
 
 For the original vercel-labs version without enhanced features:
 ```bash
-npm install -g z-agent-browser
+npm install -g agent-browser
 ```
 
 ### Linux Dependencies
@@ -493,6 +493,52 @@ This enables control of:
 - WebView2 applications
 - Any browser exposing a CDP endpoint
 
+## Playwright MCP Mode (Experimental)
+
+Control your existing browser session via the [Playwright MCP](https://github.com/microsoft/playwright-mcp) bridge extension. This allows AI agents to automate your actual browser instead of a separate headless instance.
+
+### Setup
+
+1. **Install the Chrome extension**
+   - Install "Playwright MCP Bridge" from the Chrome Web Store
+   - Or load unpacked from the playwright-mcp repo's `extension/` directory
+
+2. **Set your extension token and run**
+   ```bash
+   # Set the token from the Chrome extension
+   export PLAYWRIGHT_MCP_EXTENSION_TOKEN=your-token-here
+   export AGENT_BROWSER_BACKEND=playwright-mcp
+   
+   # Commands work the same as native mode
+   z-agent-browser open "https://example.com"
+   z-agent-browser snapshot -i
+   z-agent-browser click @e1
+   z-agent-browser back
+   z-agent-browser close
+   ```
+
+The daemon spawns `npx @playwright/mcp@latest --extension` as a subprocess and communicates via stdio. No separate server needed.
+
+### Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `AGENT_BROWSER_BACKEND` | Set to `playwright-mcp` to use MCP mode (default: `native`) |
+| `PLAYWRIGHT_MCP_EXTENSION_TOKEN` | Token from the Chrome extension (required for extension mode) |
+| `PLAYWRIGHT_MCP_COMMAND` | Custom command to spawn MCP server (default: `npx`) |
+| `PLAYWRIGHT_MCP_ARGS` | Space-separated args (default: `@playwright/mcp@latest --extension`) |
+
+### Limitations
+
+- **Feature parity**: Not all commands are supported. Streaming, profile mode, and stealth mode are not available in MCP mode.
+- **Extension required**: The Chrome extension must be installed and connected for the MCP server to control your browser.
+
+### Use Cases
+
+- **AI-assisted browsing**: Let AI agents help you navigate complex web apps in your actual browser
+- **Testing with extensions**: Test sites that require specific browser extensions
+- **Debugging**: Watch AI actions in real-time in your browser
+
 ## Streaming (Browser Preview)
 
 Stream the browser viewport via WebSocket for live preview or "pair browsing" where a human can watch and interact alongside an AI agent.
@@ -674,7 +720,7 @@ This fork (zm2231/agent-browser) adds features for bot detection bypass, persist
 
 ```bash
 git clone https://github.com/zm2231/agent-browser.git
-cd z-agent-browser
+cd agent-browser
 pnpm install
 pnpm build
 pnpm build:native   # requires Rust: https://rustup.rs
@@ -853,6 +899,9 @@ z-agent-browser open "file:///path/to/local.html"
 | `AGENT_BROWSER_EXECUTABLE_PATH` | Custom browser binary path |
 | `AGENT_BROWSER_EXTENSIONS` | Path to browser extensions |
 | `AGENT_BROWSER_STREAM_PORT` | WebSocket port for streaming |
+| `AGENT_BROWSER_BACKEND` | Backend type: `native` (default) or `playwright-mcp` |
+| `PLAYWRIGHT_MCP_COMMAND` | Command to spawn MCP server (default: `npx`) |
+| `PLAYWRIGHT_MCP_ARGS` | Space-separated args for MCP server (default: `@playwright/mcp@latest`) |
 | `NO_COLOR` | Disable colored output |
 
 ### Known Issues
@@ -861,6 +910,12 @@ z-agent-browser open "file:///path/to/local.html"
 ```bash
 pkill -f "node.*daemon"
 ```
+
+## Acknowledgments
+
+- [Playwright MCP](https://github.com/microsoft/playwright-mcp) by Microsoft - Powers the experimental MCP backend mode
+- [Playwright](https://playwright.dev/) by Microsoft - Core browser automation engine
+- [vercel-labs/agent-browser](https://github.com/vercel-labs/agent-browser) - Original project this fork is based on
 
 ## License
 

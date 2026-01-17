@@ -81,21 +81,27 @@ impl Connection {
     }
 }
 
+fn get_runtime_dir() -> PathBuf {
+    let home = dirs::home_dir().expect("Could not find home directory");
+    let dir = home.join(".z-agent-browser").join("run");
+    if !dir.exists() {
+        fs::create_dir_all(&dir).ok();
+    }
+    dir
+}
+
 #[cfg(unix)]
 fn get_socket_path(session: &str) -> PathBuf {
-    let tmp = env::temp_dir();
-    tmp.join(format!("agent-browser-{}.sock", session))
+    get_runtime_dir().join(format!("{}.sock", session))
 }
 
 fn get_pid_path(session: &str) -> PathBuf {
-    let tmp = env::temp_dir();
-    tmp.join(format!("agent-browser-{}.pid", session))
+    get_runtime_dir().join(format!("{}.pid", session))
 }
 
 #[cfg(windows)]
 fn get_port_path(session: &str) -> PathBuf {
-    let tmp = env::temp_dir();
-    tmp.join(format!("agent-browser-{}.port", session))
+    get_runtime_dir().join(format!("{}.port", session))
 }
 
 #[cfg(windows)]
@@ -171,6 +177,7 @@ pub fn ensure_daemon(
     ignore_https_errors: bool,
     args: Option<&str>,
     user_agent: Option<&str>,
+    backend: Option<&str>,
 ) -> Result<DaemonResult, String> {
     if is_daemon_running(session) && daemon_ready(session) {
         return Ok(DaemonResult {
@@ -249,6 +256,10 @@ pub fn ensure_daemon(
             cmd.env("AGENT_BROWSER_USER_AGENT", ua);
         }
 
+        if let Some(b) = backend {
+            cmd.env("AGENT_BROWSER_BACKEND", b);
+        }
+
         // Create new process group and session to fully detach
         unsafe {
             cmd.pre_exec(|| {
@@ -317,6 +328,10 @@ pub fn ensure_daemon(
 
         if let Some(ua) = user_agent {
             cmd.env("AGENT_BROWSER_USER_AGENT", ua);
+        }
+
+        if let Some(b) = backend {
+            cmd.env("AGENT_BROWSER_BACKEND", b);
         }
 
         // CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS

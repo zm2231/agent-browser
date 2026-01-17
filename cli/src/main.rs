@@ -186,7 +186,7 @@ fn main() {
         }
     };
 
-    let daemon_result = match ensure_daemon(&flags.session, flags.headed, flags.executable_path.as_deref(), &flags.extensions, flags.state.as_deref(), flags.persist, flags.stealth, flags.profile.as_deref(), flags.ignore_https_errors, flags.args.as_deref(), flags.user_agent.as_deref()) {
+    let daemon_result = match ensure_daemon(&flags.session, flags.headed, flags.executable_path.as_deref(), &flags.extensions, flags.state.as_deref(), flags.persist, flags.stealth, flags.profile.as_deref(), flags.ignore_https_errors, flags.args.as_deref(), flags.user_agent.as_deref(), flags.backend.as_deref()) {
         Ok(result) => result,
         Err(e) => {
             if flags.json {
@@ -199,7 +199,7 @@ fn main() {
     };
 
     // Warn if flags were specified but daemon was already running
-    if daemon_result.already_running && (flags.executable_path.is_some() || !flags.extensions.is_empty() || flags.profile.is_some() || flags.ignore_https_errors || flags.state.is_some() || flags.persist || flags.stealth) {
+    if daemon_result.already_running && (flags.executable_path.is_some() || !flags.extensions.is_empty() || flags.profile.is_some() || flags.ignore_https_errors || flags.state.is_some() || flags.persist || flags.stealth || flags.backend.is_some()) {
         if !flags.json {
             if flags.executable_path.is_some() {
                 eprintln!("{} --executable-path ignored: daemon already running. Use 'agent-browser close' first to restart with new path.", color::warning_indicator());
@@ -222,46 +222,53 @@ fn main() {
             if flags.stealth {
                 eprintln!("{} --stealth ignored: daemon already running. Use 'agent-browser close' first to restart with stealth mode.", color::warning_indicator());
             }
+            if flags.backend.is_some() {
+                eprintln!("{} --backend ignored: daemon already running. Use 'agent-browser close' first to restart with different backend.", color::warning_indicator());
+            }
         }
     }
 
-    // Connect via CDP if --cdp flag is set
-    if let Some(ref port) = flags.cdp {
-        let cdp_port: u16 = match port.parse::<u32>() {
-            Ok(p) if p == 0 => {
-                let msg = "Invalid CDP port: port must be greater than 0".to_string();
-                if flags.json {
-                    println!(r#"{{"success":false,"error":"{}"}}"#, msg);
-                } else {
-                    eprintln!("{} {}", color::error_indicator(), msg);
+    // Connect via CDP if --cdp flag is set (supports port number or WebSocket URL)
+    if let Some(ref cdp_endpoint) = flags.cdp {
+        let cdp_value: serde_json::Value = if cdp_endpoint.starts_with("ws://") || cdp_endpoint.starts_with("wss://") {
+            json!(cdp_endpoint)
+        } else {
+            match cdp_endpoint.parse::<u32>() {
+                Ok(p) if p == 0 => {
+                    let msg = "Invalid CDP port: port must be greater than 0".to_string();
+                    if flags.json {
+                        println!(r#"{{"success":false,"error":"{}"}}"#, msg);
+                    } else {
+                        eprintln!("{} {}", color::error_indicator(), msg);
+                    }
+                    exit(1);
                 }
-                exit(1);
-            }
-            Ok(p) if p > 65535 => {
-                let msg = format!("Invalid CDP port: {} is out of range (valid range: 1-65535)", p);
-                if flags.json {
-                    println!(r#"{{"success":false,"error":"{}"}}"#, msg);
-                } else {
-                    eprintln!("{} {}", color::error_indicator(), msg);
+                Ok(p) if p > 65535 => {
+                    let msg = format!("Invalid CDP port: {} is out of range (valid range: 1-65535)", p);
+                    if flags.json {
+                        println!(r#"{{"success":false,"error":"{}"}}"#, msg);
+                    } else {
+                        eprintln!("{} {}", color::error_indicator(), msg);
+                    }
+                    exit(1);
                 }
-                exit(1);
-            }
-            Ok(p) => p as u16,
-            Err(_) => {
-                let msg = format!("Invalid CDP port: '{}' is not a valid number. Port must be a number between 1 and 65535", port);
-                if flags.json {
-                    println!(r#"{{"success":false,"error":"{}"}}"#, msg);
-                } else {
-                    eprintln!("{} {}", color::error_indicator(), msg);
+                Ok(p) => json!(p as u16),
+                Err(_) => {
+                    let msg = format!("Invalid CDP endpoint: '{}'. Use a port number (1-65535) or WebSocket URL (ws://...)", cdp_endpoint);
+                    if flags.json {
+                        println!(r#"{{"success":false,"error":"{}"}}"#, msg);
+                    } else {
+                        eprintln!("{} {}", color::error_indicator(), msg);
+                    }
+                    exit(1);
                 }
-                exit(1);
             }
         };
 
         let mut launch_cmd = json!({
             "id": gen_id(),
             "action": "launch",
-            "cdpPort": cdp_port
+            "cdpPort": cdp_value
         });
 
         if flags.ignore_https_errors {
