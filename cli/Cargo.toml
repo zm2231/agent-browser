@@ -1,6 +1,6 @@
 [package]
 name = "z-agent-browser"
-version = "0.5.7"
+version = "0.5.8"
 edition = "2021"
 description = "Enhanced browser automation CLI for AI agents - stealth, persistence, profiles"
 license = "Apache-2.0"
