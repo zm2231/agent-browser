@@ -300,6 +300,59 @@ z-agent-browser snapshot -i -c -d 5         # Combine options
 | `-d, --depth <n>` | Limit tree depth |
 | `-s, --selector <sel>` | Scope to CSS selector |
 
+## Token Efficiency: eval vs snapshot
+
+For AI agents, token efficiency is critical. Use the right tool for the job:
+
+### Use `snapshot -i` for navigation (finding what to click)
+```bash
+z-agent-browser snapshot -i   # Returns interactive elements with refs
+# Output: ~200-500 tokens for buttons, links, inputs
+```
+
+### Use `eval` for data extraction (getting information)
+```bash
+# Instead of parsing a 5000-token snapshot, run JS to get exactly what you need:
+z-agent-browser eval "document.querySelectorAll('.item').length"
+z-agent-browser eval "[...document.querySelectorAll('a')].map(a => ({text: a.textContent, href: a.href}))"
+z-agent-browser eval "document.querySelector('h1').textContent"
+```
+
+### When to use which
+
+| Task | Best Tool | Token Cost |
+|------|-----------|------------|
+| Find button to click | `snapshot -i` | ~200-500 |
+| Count items on page | `eval` | ~10 |
+| Extract all links | `eval` | ~50-200 |
+| Fill a form | `snapshot -i` + refs | ~200-500 |
+| Check if logged in | `eval` | ~10 |
+| Get table data | `eval` | ~100-500 |
+| Navigate complex UI | `snapshot -i` | ~200-500 |
+
+### Example: Extract data efficiently
+
+**Bad** (snapshot approach - ~5000 tokens):
+```bash
+z-agent-browser snapshot    # Returns full page, AI parses it
+```
+
+**Good** (eval approach - ~100 tokens):
+```bash
+z-agent-browser eval "
+  const rows = [...document.querySelectorAll('tr')];
+  rows.slice(1, 11).map(r => ({
+    title: r.cells[0]?.textContent?.trim(),
+    link: r.querySelector('a')?.href
+  }));
+"
+# Returns: [{title: "...", link: "..."}, ...]
+```
+
+**Rule of thumb**: 
+- Need to CLICK/FILL something? → `snapshot -i` + refs
+- Need to READ/COUNT/EXTRACT data? → `eval`
+
 ## Options
 
 | Option | Description |
