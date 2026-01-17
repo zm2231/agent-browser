@@ -1,8 +1,29 @@
 # z-agent-browser
 
-Headless browser automation CLI for AI agents. Fast Rust CLI with Node.js fallback.
+Browser automation CLI for AI agents. Fast Rust CLI with Node.js fallback.
 
-This is the **enhanced fork** of [vercel-labs/agent-browser](https://github.com/vercel-labs/agent-browser) with stealth mode, auto-persistence, profile mode, and more. Published to npm as `z-agent-browser`.
+Enhanced fork of [vercel-labs/agent-browser](https://github.com/vercel-labs/agent-browser) with features AI agents actually need.
+
+## What's Different
+
+| Feature | Upstream | This Fork |
+|---------|----------|-----------|
+| **Browser Modes** | Headless only | Headless, Headed, Stealth, CDP |
+| **Login Persistence** | None | State save/load to JSON |
+| **Bot Detection** | Detected | Stealth mode bypasses most checks |
+| **Lifecycle Control** | Implicit | Explicit `start`/`stop`/`status` |
+| **Real Chrome** | No | CDP mode for saved passwords |
+| **Video Recording** | No | WebM recording |
+| **Streaming** | No | WebSocket viewport streaming |
+
+## Browser Modes
+
+```bash
+z-agent-browser start                    # Headless (default)
+z-agent-browser start --headed           # Visible browser
+z-agent-browser start --stealth          # Bypass bot detection
+z-agent-browser connect 9222             # Real Chrome with saved passwords
+```
 
 ## Installation
 
@@ -597,7 +618,7 @@ The daemon spawns `npx @playwright/mcp@latest --extension` as a subprocess and c
 
 ### Limitations
 
-- **Feature parity**: Not all commands are supported. Streaming, profile mode, and stealth mode are not available in MCP mode.
+- **Feature parity**: Not all commands are supported. Streaming, state save/load, and stealth mode are not available in MCP mode.
 - **Extension required**: The Chrome extension must be installed and connected for the MCP server to control your browser.
 
 ### Use Cases
