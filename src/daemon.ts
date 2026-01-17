@@ -15,6 +15,52 @@ const backendType: BackendType =
 // Platform detection
 const isWindows = process.platform === 'win32';
 
+// Auto-detect system Chrome (better UX than bundled "Chrome for Testing")
+function getDefaultChromePath(): string | undefined {
+  // If user explicitly set a path, use it
+  if (process.env.AGENT_BROWSER_EXECUTABLE_PATH) {
+    return process.env.AGENT_BROWSER_EXECUTABLE_PATH;
+  }
+
+  // Auto-detect based on platform
+  const candidates: string[] = [];
+
+  if (process.platform === 'darwin') {
+    candidates.push(
+      '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+      '/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary',
+      '/Applications/Chromium.app/Contents/MacOS/Chromium'
+    );
+  } else if (process.platform === 'win32') {
+    const programFiles = process.env['PROGRAMFILES'] || 'C:\\Program Files';
+    const programFilesX86 = process.env['PROGRAMFILES(X86)'] || 'C:\\Program Files (x86)';
+    const localAppData = process.env['LOCALAPPDATA'] || '';
+    candidates.push(
+      `${programFiles}\\Google\\Chrome\\Application\\chrome.exe`,
+      `${programFilesX86}\\Google\\Chrome\\Application\\chrome.exe`,
+      `${localAppData}\\Google\\Chrome\\Application\\chrome.exe`
+    );
+  } else {
+    // Linux
+    candidates.push(
+      '/usr/bin/google-chrome',
+      '/usr/bin/google-chrome-stable',
+      '/usr/bin/chromium',
+      '/usr/bin/chromium-browser',
+      '/snap/bin/chromium'
+    );
+  }
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  // Fall back to bundled Chromium (undefined lets Playwright use its default)
+  return undefined;
+}
+
 // Session support - each session gets its own socket/pid
 let currentSession = process.env.AGENT_BROWSER_SESSION || 'default';
 
@@ -289,7 +335,7 @@ export async function startDaemon(options?: { streamPort?: number }): Promise<vo
                 id: 'auto',
                 action: 'launch',
                 headless: !headedEnv,
-                executablePath: process.env.AGENT_BROWSER_EXECUTABLE_PATH,
+                executablePath: getDefaultChromePath(),
                 extensions: extensions,
                 storageState: persistState,
                 profile: process.env.AGENT_BROWSER_PROFILE,
