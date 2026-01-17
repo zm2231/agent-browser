@@ -4,16 +4,25 @@ Browser automation CLI for AI agents. Fast Rust CLI with Node.js fallback.
 
 Enhanced fork of [vercel-labs/agent-browser](https://github.com/vercel-labs/agent-browser) with features AI agents actually need.
 
+**For AI agent integration**, see [browser-skill](https://github.com/zm2231/browser-skill) - ready-to-use skill files for Claude Code, OpenCode, and other AI agents.
+
+## Highlights
+
+- **Gmail/Google support** via [hybrid CDP workflow](#gmailgoogle-login-hybrid-workflow) - login in real Chrome, use sessions in headless stealth
+- **Stealth mode** bypasses most bot detection
+- **State save/load** persists login sessions to JSON
+- **CDP mode** connects to real Chrome with saved passwords
+
 ## What's Different
 
 | Feature | Upstream | This Fork |
 |---------|----------|-----------|
 | **Browser Modes** | Headless only | Headless, Headed, Stealth, CDP |
 | **Login Persistence** | None | State save/load to JSON |
-| **Bot Detection** | Detected | Stealth mode bypasses most checks |
+| **Bot Detection** | Detected | Stealth mode bypasses most |
+| **Gmail/Google** | Blocked | Hybrid workflow (CDP → state → stealth) |
 | **Lifecycle Control** | Implicit | Explicit `start`/`stop`/`status` |
 | **Real Chrome** | No | CDP mode for saved passwords |
-| **Video Recording** | No | WebM recording |
 | **Streaming** | No | WebSocket viewport streaming |
 
 ## Browser Modes
