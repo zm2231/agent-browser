@@ -698,18 +698,19 @@ Core workflow:
 
 ### Claude Code Skill
 
-For Claude Code, a [skill](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices) provides richer context:
+For Claude Code, install the [browser-skill](https://github.com/zm2231/browser-skill):
 
-```bash
-cp -r node_modules/agent-browser/skills/z-agent-browser .claude/skills/
+```
+/plugin marketplace add zm2231/browser-skill
+/plugin install browser-skill@browser-skill-marketplace
 ```
 
-Or download:
+Or manually:
 
 ```bash
-mkdir -p .claude/skills/z-agent-browser
-curl -o .claude/skills/agent-browser/SKILL.md \
-  https://raw.githubusercontent.com/vercel-labs/agent-browser/main/skills/agent-browser/SKILL.md
+mkdir -p ~/.claude/skills/browser-automation
+curl -o ~/.claude/skills/browser-automation/skill.md \
+  https://raw.githubusercontent.com/zm2231/browser-skill/main/skills/browser-automation/skill.md
 ```
 
 ## Enhanced Fork Features
