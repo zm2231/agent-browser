@@ -920,61 +920,55 @@ z-agent-browser open "https://github.com"  # Already logged in!
 
 ### Gmail/Google Login (Hybrid Workflow)
 
-Google detects Playwright (even stealth mode) and blocks automated login. This hybrid workflow **actually works** - tested successfully for reading Gmail:
+Google detects Playwright (even stealth mode) and blocks automated login. This hybrid workflow **actually works** - tested successfully for reading Gmail.
 
-**The key insight:** Google validates during LOGIN (detecting automation), but accepts valid cookies afterward. Get cookies from real Chrome, use them in stealth automation.
+**Why this only works in z-browser:**
 
-#### Option 1: AI-Assisted Login (Recommended)
+| Step | Vercel v0.6.0 | z-browser |
+|------|---------------|-----------|
+| `connect 9222` | ✅ Works | ✅ Works |
+| `state save` | ✅ Works | ✅ Works |
+| `state load` (runtime) | ❌ Returns "must load at launch" | ✅ Actually loads cookies |
+| `--stealth` mode | ❌ Doesn't exist | ✅ Bypasses basic detection |
 
-Let your AI agent handle the workflow. The agent can:
-1. Detect that headed mode is needed for login
-2. Switch to `--headed` mode
-3. Prompt you to login manually in the visible browser
-4. Save state after login
-5. Continue automation in stealth mode
+Even if Vercel users restart with `--state` at launch, they lack stealth mode - so Google may detect and invalidate the session.
 
-```bash
-# AI agent workflow (what actually worked):
-z-agent-browser start --headed        # Agent switches to headed
-z-agent-browser open "https://mail.google.com"
-# User logs in manually when prompted
-z-agent-browser state save ~/.z-agent-browser/gmail-state.json
-z-agent-browser configure --stealth   # Switch to stealth
-z-agent-browser state load ~/.z-agent-browser/gmail-state.json
-# Now automation works!
-```
-
-#### Option 2: Manual CDP Workflow
+**Key insight:** Real Chrome bypasses Google's bot detection for login. Once cookies are saved, stealth Playwright can use them.
 
 ```bash
-# 1. Copy your Chrome profile (one-time)
+# 1. Copy real Chrome profile to separate location (one-time)
 cp -R "$HOME/Library/Application Support/Google/Chrome" ~/.z-agent-browser/cdp-profile
 
-# 2. Launch real Chrome with CDP
-killall "Google Chrome" 2>/dev/null || true
+# 2. Kill existing Chrome & launch with CDP
+killall "Google Chrome"
 "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
   --remote-debugging-port=9222 \
   --user-data-dir="$HOME/.z-agent-browser/cdp-profile" &
 
-# 3. Connect and verify CDP is working
+# 3. Connect via CDP
 z-agent-browser connect 9222
-z-agent-browser open "https://mail.google.com"
-# If not logged in, login manually in the Chrome window
 
-# 4. Save state for future use
+# 4. Open Gmail - user completes login if needed
+z-agent-browser open "https://mail.google.com"
+# User sees real Chrome window, completes any 2FA/confirmation
+
+# 5. Save state for future use
 z-agent-browser state save ~/.z-agent-browser/gmail-state.json
+
+# 6. Quit CDP Chrome
 z-agent-browser close
 killall "Google Chrome"
 
-# 5. Now use headless stealth with saved state
+# 7. Now stealth mode works with saved cookies
 z-agent-browser start --stealth
 z-agent-browser state load ~/.z-agent-browser/gmail-state.json
-z-agent-browser open "https://mail.google.com"  # Logged in!
+z-agent-browser open "https://mail.google.com"
+# Logged in! ✅
 ```
 
-**Why this works:** Google validates the session during login (detecting Playwright), but once you have valid cookies from real Chrome, Playwright stealth can use them for reading/navigation.
+**Why this works:** Real Chrome passes Google's bot detection during login. Once you have valid session cookies saved, stealth Playwright can use them for reading emails and navigation.
 
-**Important:** Session cookies may expire. Re-run the login workflow periodically.
+**Important:** Session cookies may expire. Re-run steps 2-6 periodically to refresh.
 
 ### Custom User-Agent
 
