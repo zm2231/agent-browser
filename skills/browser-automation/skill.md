@@ -7,6 +7,63 @@ requires:
 
 # Browser Automation with z-agent-browser
 
+## BEFORE YOU START - Mode Selection
+
+**STOP. Ask the user which mode to use before executing any browser commands.**
+
+| Mode | Best For | Requires |
+|------|----------|----------|
+| **Native** (default) | General automation, scraping, testing | Nothing extra |
+| **Native + Stealth** | Sites with bot detection (Cloudflare, etc.) | Nothing extra |
+| **CDP (Real Chrome)** | Saved passwords, CAPTCHA, 2FA, Google/Gmail | Chrome running with `--remote-debugging-port=9222` |
+| **Playwright MCP** | Control user's existing Chrome tabs | Chrome extension + token |
+
+**Ask the user:**
+> "I can automate browsers in a few ways:
+> 1. **Headless** - Fast, invisible automation (default)
+> 2. **Headed** - Visible browser window (for debugging or manual steps)
+> 3. **Stealth** - Bypasses bot detection (for protected sites)
+> 4. **Real Chrome (CDP)** - Uses your actual Chrome with saved passwords
+> 5. **Playwright MCP** - Controls your existing Chrome tabs (experimental)
+>
+> Which mode should I use? (or describe what you're trying to do and I'll recommend one)"
+
+### Quick Decision Guide
+
+```
+Need saved passwords or 2FA?     → CDP Mode (Real Chrome)
+Site blocks automation?          → Native + Stealth  
+Google/Gmail?                    → CDP for login, then Stealth
+Just testing/scraping?           → Native (default)
+Want to watch it run?            → Native + Headed
+Control existing Chrome tabs?    → Playwright MCP
+```
+
+### Mode Setup Commands
+
+```bash
+# Native (default)
+z-agent-browser start
+
+# Native + Headed (visible)
+z-agent-browser start --headed
+
+# Native + Stealth (anti-detection)
+z-agent-browser start --stealth
+
+# CDP (Real Chrome) - requires custom profile directory (Chrome 136+ blocks CDP on default profile)
+# First-time: cp -R "$HOME/Library/Application Support/Google/Chrome" ~/.z-agent-browser/chrome-profile
+# Then launch: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --remote-debugging-port=9222 --user-data-dir="$HOME/.z-agent-browser/chrome-profile" &
+z-agent-browser connect 9222
+
+# Playwright MCP - user must set env vars first:
+# export PLAYWRIGHT_MCP_EXTENSION_TOKEN=<token>
+# export AGENT_BROWSER_BACKEND=playwright-mcp
+z-agent-browser open <url>
+```
+
+---
+
 ## Core Workflow
 
 1. **Navigate**: `z-agent-browser open <url>`
@@ -180,40 +237,57 @@ z-agent-browser open "https://github.com"  # Already logged in!
 
 ## CDP Mode (Real Chrome)
 
-For CAPTCHA, 2FA, or using saved passwords:
+For CAPTCHA, 2FA, or using saved passwords.
 
+> **Note**: Chrome 136+ blocks CDP on default profile. You must use `--user-data-dir`.
+
+**First-time setup** (copy your Chrome profile):
 ```bash
+# macOS
+mkdir -p ~/.z-agent-browser
+cp -R "$HOME/Library/Application Support/Google/Chrome" ~/.z-agent-browser/chrome-profile
+
+# Linux  
+cp -R ~/.config/google-chrome ~/.z-agent-browser/chrome-profile
+```
+
+**Launch and connect**:
+```bash
+# Quit existing Chrome
+pkill -9 "Google Chrome"
+
+# Launch with CDP + custom profile
 "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
-  --remote-debugging-port=9222 &
+  --remote-debugging-port=9222 \
+  --user-data-dir="$HOME/.z-agent-browser/chrome-profile" &
 
 z-agent-browser connect 9222
-z-agent-browser open "https://github.com"  # Uses real Chrome
+z-agent-browser open "https://github.com"  # Uses real Chrome with your logins
 ```
 
 ## Gmail/Google (Hybrid Workflow)
 
-Google blocks Chromium automation. Use real Chrome for login, then stealth for automation:
+Google blocks Chromium automation. Use real Chrome for login, then stealth for automation.
+
+> **Prerequisite**: Complete "CDP Mode" first-time setup above (copy Chrome profile).
 
 ```bash
-# 1. Copy Chrome profile (one-time)
-cp -R "$HOME/Library/Application Support/Google/Chrome" ~/.z-agent-browser/cdp-profile
-
-# 2. Launch real Chrome with CDP
-killall "Google Chrome"
+# 1. Launch real Chrome with CDP (using copied profile)
+pkill -9 "Google Chrome"
 "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
   --remote-debugging-port=9222 \
-  --user-data-dir="$HOME/.z-agent-browser/cdp-profile" &
+  --user-data-dir="$HOME/.z-agent-browser/chrome-profile" &
 
-# 3. Connect and login if needed
+# 2. Connect and login if needed
 z-agent-browser connect 9222
 z-agent-browser open "https://mail.google.com"
 # User completes login in Chrome window
 
-# 4. Save state
+# 3. Save state
 z-agent-browser state save ~/.z-agent-browser/gmail-state.json
-z-agent-browser close && killall "Google Chrome"
+z-agent-browser close && pkill -9 "Google Chrome"
 
-# 5. Use stealth with saved state
+# 4. Use stealth with saved state
 z-agent-browser start --stealth
 z-agent-browser state load ~/.z-agent-browser/gmail-state.json
 z-agent-browser open "https://mail.google.com"  # Logged in!
