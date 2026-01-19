@@ -2,35 +2,23 @@
 
 Browser automation CLI for AI agents. Fast Rust CLI with Node.js fallback.
 
-Enhanced fork of [vercel-labs/agent-browser](https://github.com/vercel-labs/agent-browser) with features AI agents actually need.
+Fork of [vercel-labs/agent-browser](https://github.com/vercel-labs/agent-browser) built for AI agents that need to operate in the real web: authenticated sites, bot detection, and your actual browser tabs.
+
+**Why this fork?** I’m building an AI personal assistant that needs to work in the same places I do: Gmail, bank accounts, internal tools. The existing browser automation tools either burn context on screenshots or get blocked by Google. This adds the modes and workflows needed for real-world AI agent tasks.
 
 **For AI agent integration**, see [browser-skill](https://github.com/zm2231/browser-skill) - ready-to-use skill files for Claude Code, OpenCode, and other AI agents.
 
 ## Highlights
 
+- **Playwright MCP integration** - The daemon spawns `npx @playwright/mcp@latest --extension` as a subprocess and communicates via stdio. No separate server needed. Control your existing browser tabs without relaunching.
+- **Multiple connection modes, same interface** - Headless for background automation, headed when you need to see what’s happening, extension mode for existing tabs, profile mode to preserve logins. Pick the right tool for the task; CLI stays the same.
+- **Token efficiency** - Structured page access instead of screenshots. `snapshot -i` for navigation (~200-500 tokens), `eval` for data extraction (~10-100 tokens).
 - **Gmail/Google support** via [hybrid CDP workflow](#gmailgoogle-login-hybrid-workflow) - login in real Chrome, use sessions in stealth automation
-- **Stealth mode** bypasses basic bot detection (not Google - see [limitations](#stealth-mode-honest-limitations))
-- **Runtime state load** - load auth into running browser, not just at launch
-- **Auto-persistence** - automatic state save/restore between sessions
-- **CDP flexibility** - connect via port numbers OR WebSocket URLs
-
-## What's Different
-
-*Compared to upstream [vercel-labs/agent-browser](https://github.com/vercel-labs/agent-browser) v0.6.0 (Jan 2026)*
-
-| Feature | Upstream (v0.6.0) | This Fork |
-|---------|-------------------|-----------|
-| **Stealth Mode** | ❌ | ✅ playwright-extra integration |
-| **Runtime State Load** | ❌ Returns "must load at launch" | ✅ Actually loads cookies + localStorage |
-| **Auto-Persistence** | ❌ | ✅ `--persist` flag for automatic save/restore |
-| **Lifecycle Control** | Implicit | ✅ Explicit `start`/`stop`/`status`/`configure` |
-| **CDP Flexibility** | Port numbers only | ✅ Port + WebSocket URLs (`ws://`) |
-| **Auto-detect Chrome** | ❌ | ✅ Finds system Chrome automatically |
-| **Gmail Hybrid Workflow** | Not documented | ✅ Documented workflow that works |
-| **Profile Mode** | ❌ | ✅ `--profile` for persistent Chrome profile |
-| **Playwright MCP Backend** | ❌ | ✅ Control existing Chrome via extension |
-
-**Note:** Upstream v0.6.0 added `connect` command, video recording, and `--proxy` flag. Both now have streaming. The key differences are in **usability** and **workflow support** - z-browser provides the tools needed for real-world AI agent tasks like authenticated automation.
+- **Stealth mode** - playwright-extra integration bypasses basic bot detection (not Google directly; see [limitations](#stealth-mode-honest-limitations))
+- **Runtime state load** - load auth cookies into a running browser, not just at launch
+- **Auto-persistence** - automatic state save/restore between sessions with `--persist`
+- **Connect to existing tabs** - via browser extension, no restart needed even with 40 tabs open
+- **CDP flexibility** - connect via port numbers or WebSocket URLs (`ws://`)
 
 ## Browser Modes
 
@@ -62,13 +50,6 @@ pnpm link --global  # Makes z-agent-browser available globally
 z-agent-browser install
 ```
 
-### Upstream (Basic Features Only)
-
-For the original vercel-labs version without enhanced features:
-```bash
-npm install -g agent-browser
-```
-
 ### Linux Dependencies
 
 On Linux, install system dependencies:
@@ -77,6 +58,230 @@ On Linux, install system dependencies:
 z-agent-browser install --with-deps
 # or manually: npx playwright install-deps chromium
 ```
+
+## Token Efficiency: eval vs snapshot
+
+For AI agents, token efficiency is critical. Use the right tool for the job:
+
+### Use `snapshot -i` for navigation (finding what to click)
+
+```bash
+z-agent-browser snapshot -i   # Returns interactive elements with refs
+# Output: ~200-500 tokens for buttons, links, inputs
+```
+
+### Use `eval` for data extraction (getting information)
+
+```bash
+# Instead of parsing a 5000-token snapshot, run JS to get exactly what you need:
+z-agent-browser eval "document.querySelectorAll('.item').length"
+z-agent-browser eval "[...document.querySelectorAll('a')].map(a => ({text: a.textContent, href: a.href}))"
+z-agent-browser eval "document.querySelector('h1').textContent"
+```
+
+### When to use which
+
+|Task                |Best Tool           |Token Cost|
+|--------------------|--------------------|----------|
+|Find button to click|`snapshot -i`       |~200-500  |
+|Count items on page |`eval`              |~10       |
+|Extract all links   |`eval`              |~50-200   |
+|Fill a form         |`snapshot -i` + refs|~200-500  |
+|Check if logged in  |`eval`              |~10       |
+|Get table data      |`eval`              |~100-500  |
+|Navigate complex UI |`snapshot -i`       |~200-500  |
+
+### Example: Extract data efficiently
+
+**Bad** (snapshot approach - ~5000 tokens):
+
+```bash
+z-agent-browser snapshot    # Returns full page, AI parses it
+```
+
+**Good** (eval approach - ~100 tokens):
+
+```bash
+z-agent-browser eval "
+  const rows = [...document.querySelectorAll('tr')];
+  rows.slice(1, 11).map(r => ({
+    title: r.cells[0]?.textContent?.trim(),
+    link: r.querySelector('a')?.href
+  }));
+"
+# Returns: [{title: "...", link: "..."}, ...]
+```
+
+**Rule of thumb**:
+
+- Need to CLICK/FILL something? → `snapshot -i` + refs
+- Need to READ/COUNT/EXTRACT data? → `eval`
+
+## Playwright MCP Mode (Experimental)
+
+Control your existing browser session via the [Playwright MCP](https://github.com/microsoft/playwright-mcp) bridge extension. This allows AI agents to automate your actual browser instead of a separate headless instance.
+
+**Key feature:** The daemon spawns `npx @playwright/mcp@latest --extension` as a subprocess and communicates via stdio. No separate server needed.
+
+### Setup
+
+1. **Install the Chrome extension**
+- Install [Playwright MCP Bridge](https://chromewebstore.google.com/detail/playwright-mcp-bridge/akopickhbggdgknlmlpdikmhnnmponha) from the Chrome Web Store
+- Or load unpacked from the [playwright-mcp repo’s extension directory](https://github.com/microsoft/playwright-mcp/tree/main/extension)
+1. **Set your extension token and run**
+   
+   ```bash
+   # Set the token from the Chrome extension
+   export PLAYWRIGHT_MCP_EXTENSION_TOKEN=your-token-here
+   export AGENT_BROWSER_BACKEND=playwright-mcp
+   
+   # Commands work the same as native mode
+   z-agent-browser open "https://example.com"
+   z-agent-browser snapshot -i
+   z-agent-browser click @e1
+   z-agent-browser back
+   z-agent-browser close
+   ```
+
+### Environment Variables
+
+|Variable                        |Description                                                         |
+|--------------------------------|--------------------------------------------------------------------|
+|`AGENT_BROWSER_BACKEND`         |Set to `playwright-mcp` to use MCP mode (default: `native`)         |
+|`PLAYWRIGHT_MCP_EXTENSION_TOKEN`|Token from the Chrome extension (required for extension mode)       |
+|`PLAYWRIGHT_MCP_COMMAND`        |Custom command to spawn MCP server (default: `npx`)                 |
+|`PLAYWRIGHT_MCP_ARGS`           |Space-separated args (default: `@playwright/mcp@latest --extension`)|
+
+### Limitations
+
+- **Feature parity**: Not all commands are supported. Streaming, state save/load, and stealth mode are not available in MCP mode.
+- **Extension required**: The Chrome extension must be installed and connected for the MCP server to control your browser.
+
+### Use Cases
+
+- **AI-assisted browsing**: Let AI agents help you navigate complex web apps in your actual browser
+- **Testing with extensions**: Test sites that require specific browser extensions
+- **Debugging**: Watch AI actions in real-time in your browser
+- **No restart needed**: Control your existing 40 tabs without relaunching Chrome
+
+## Stealth Mode
+
+Bypass bot detection using playwright-extra with stealth plugin:
+
+```bash
+z-agent-browser --stealth open https://bot.sannysoft.com
+z-agent-browser snapshot -i
+# Basic bot detection tests pass
+
+# Via environment variable
+AGENT_BROWSER_STEALTH=1 z-agent-browser open https://example.com
+```
+
+Stealth mode applies evasions for: WebDriver detection, Chrome automation flags, permissions, plugins, languages, WebGL, and more.
+
+### Stealth Mode: Honest Limitations
+
+Stealth mode is **not a silver bullet**. Based on 2024-2025 research:
+
+|Protection                   |Success Rate|Notes                                                            |
+|-----------------------------|------------|-----------------------------------------------------------------|
+|Basic bot detection          |~60-80%     |Simple WAFs, basic fingerprinting                                |
+|Simple e-commerce            |~60-70%     |Sites without advanced protection                                |
+|DataDome                     |**~0%**     |They detect stealth plugin in 4 lines of JS                      |
+|Modern Cloudflare (Turnstile)|~10-20%     |Only basic challenges work                                       |
+|**Google/Gmail**             |**<5%**     |Use [hybrid workflow](#gmailgoogle-login-hybrid-workflow) instead|
+
+**For Google/Gmail:** Stealth alone will NOT work. Use the hybrid CDP workflow (login in real Chrome → save state → use in stealth automation). This is why z-browser documents and supports that workflow.
+
+**For enterprise anti-bot (DataDome, Cloudflare ML):** Consider commercial services (ZenRows, Bright Data) or residential proxies with CAPTCHA solving.
+
+## Auto-Persistence
+
+Save and restore auth state automatically between sessions:
+
+```bash
+# First session: log in with --persist
+z-agent-browser --persist open "https://github.com/login" --headed
+# User logs in manually
+z-agent-browser close   # State saved to ~/.z-agent-browser/sessions/default.json
+
+# Later sessions: auth restored automatically
+z-agent-browser --persist open "https://github.com"   # Already logged in
+```
+
+Use explicit state file:
+
+```bash
+z-agent-browser --state ~/github-auth.json open "https://github.com"
+```
+
+## Login Persistence (State Save/Load)
+
+Save login sessions to a JSON file and restore them later:
+
+```bash
+# First time: Login manually in headed mode
+z-agent-browser start --headed
+z-agent-browser open "https://github.com"
+# [User logs in manually]
+z-agent-browser state save ~/.z-agent-browser/github.json
+z-agent-browser stop
+
+# Later: Restore session headlessly
+z-agent-browser start
+z-agent-browser state load ~/.z-agent-browser/github.json
+z-agent-browser open "https://github.com"  # Already logged in!
+```
+
+**Key points:**
+
+- Saves cookies, localStorage, sessionStorage to JSON file
+- Portable across sessions and restarts
+- Works on both Mac and Linux
+- Default state path: `~/.z-agent-browser/default-state.json`
+
+**Headless Limitation:** Google, Gmail, and other strict sites detect headless Chromium and invalidate sessions. For these sites, use `--headed` or CDP Mode with real Chrome.app.
+
+## Gmail/Google Login (Hybrid Workflow)
+
+Google detects Playwright (even stealth mode) and blocks automated login. This hybrid workflow **actually works** - tested successfully for reading Gmail.
+
+**Key insight:** Real Chrome bypasses Google’s bot detection for login. Once cookies are saved, stealth Playwright can use them.
+
+```bash
+# 1. Copy real Chrome profile to separate location (one-time)
+cp -R "$HOME/Library/Application Support/Google/Chrome" ~/.z-agent-browser/cdp-profile
+
+# 2. Kill existing Chrome & launch with CDP
+killall "Google Chrome"
+"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+  --remote-debugging-port=9222 \
+  --user-data-dir="$HOME/.z-agent-browser/cdp-profile" &
+
+# 3. Connect via CDP
+z-agent-browser connect 9222
+
+# 4. Open Gmail - user completes login if needed
+z-agent-browser open "https://mail.google.com"
+# User sees real Chrome window, completes any 2FA/confirmation
+
+# 5. Save state for future use
+z-agent-browser state save ~/.z-agent-browser/gmail-state.json
+
+# 6. Quit CDP Chrome
+z-agent-browser close
+killall "Google Chrome"
+
+# 7. Now stealth mode works with saved cookies
+z-agent-browser start --stealth
+z-agent-browser state load ~/.z-agent-browser/gmail-state.json
+z-agent-browser open "https://mail.google.com"
+# Logged in! ✅
+```
+
+**Why this works:** Real Chrome passes Google’s bot detection during login. Once you have valid session cookies saved, stealth Playwright can use them for reading emails and navigation.
+
+**Important:** Session cookies may expire. Re-run steps 2-6 periodically to refresh.
 
 ## Quick Start
 
@@ -167,6 +372,7 @@ z-agent-browser find nth <n> <sel> <action> [value]     # Nth match
 **Actions:** `click`, `fill`, `check`, `hover`, `text`
 
 **Examples:**
+
 ```bash
 z-agent-browser find role button click --name "Submit"
 z-agent-browser find text "Sign In" click
@@ -312,6 +518,7 @@ z-agent-browser session
 ```
 
 Each session has its own:
+
 - Browser instance
 - Cookies and storage
 - Navigation history
@@ -330,80 +537,27 @@ z-agent-browser snapshot -s "#main"         # Scope to CSS selector
 z-agent-browser snapshot -i -c -d 5         # Combine options
 ```
 
-| Option | Description |
-|--------|-------------|
-| `-i, --interactive` | Only show interactive elements (buttons, links, inputs) |
-| `-c, --compact` | Remove empty structural elements |
-| `-d, --depth <n>` | Limit tree depth |
-| `-s, --selector <sel>` | Scope to CSS selector |
-
-## Token Efficiency: eval vs snapshot
-
-For AI agents, token efficiency is critical. Use the right tool for the job:
-
-### Use `snapshot -i` for navigation (finding what to click)
-```bash
-z-agent-browser snapshot -i   # Returns interactive elements with refs
-# Output: ~200-500 tokens for buttons, links, inputs
-```
-
-### Use `eval` for data extraction (getting information)
-```bash
-# Instead of parsing a 5000-token snapshot, run JS to get exactly what you need:
-z-agent-browser eval "document.querySelectorAll('.item').length"
-z-agent-browser eval "[...document.querySelectorAll('a')].map(a => ({text: a.textContent, href: a.href}))"
-z-agent-browser eval "document.querySelector('h1').textContent"
-```
-
-### When to use which
-
-| Task | Best Tool | Token Cost |
-|------|-----------|------------|
-| Find button to click | `snapshot -i` | ~200-500 |
-| Count items on page | `eval` | ~10 |
-| Extract all links | `eval` | ~50-200 |
-| Fill a form | `snapshot -i` + refs | ~200-500 |
-| Check if logged in | `eval` | ~10 |
-| Get table data | `eval` | ~100-500 |
-| Navigate complex UI | `snapshot -i` | ~200-500 |
-
-### Example: Extract data efficiently
-
-**Bad** (snapshot approach - ~5000 tokens):
-```bash
-z-agent-browser snapshot    # Returns full page, AI parses it
-```
-
-**Good** (eval approach - ~100 tokens):
-```bash
-z-agent-browser eval "
-  const rows = [...document.querySelectorAll('tr')];
-  rows.slice(1, 11).map(r => ({
-    title: r.cells[0]?.textContent?.trim(),
-    link: r.querySelector('a')?.href
-  }));
-"
-# Returns: [{title: "...", link: "..."}, ...]
-```
-
-**Rule of thumb**: 
-- Need to CLICK/FILL something? → `snapshot -i` + refs
-- Need to READ/COUNT/EXTRACT data? → `eval`
+|Option                |Description                                            |
+|----------------------|-------------------------------------------------------|
+|`-i, --interactive`   |Only show interactive elements (buttons, links, inputs)|
+|`-c, --compact`       |Remove empty structural elements                       |
+|`-d, --depth <n>`     |Limit tree depth                                       |
+|`-s, --selector <sel>`|Scope to CSS selector                                  |
 
 ## Options
 
-| Option | Description |
-|--------|-------------|
-| `--session <name>` | Use isolated session (or `AGENT_BROWSER_SESSION` env) |
-| `--headers <json>` | Set HTTP headers scoped to the URL's origin |
-| `--executable-path <path>` | Custom browser executable (or `AGENT_BROWSER_EXECUTABLE_PATH` env) |
-| `--json` | JSON output (for agents) |
-| `--full, -f` | Full page screenshot |
-| `--name, -n` | Locator name filter |
-| `--exact` | Exact text match |
-| `--headed` | Show browser window (not headless) |
-| `--cdp <port>` | Connect via Chrome DevTools Protocol |
-| `--debug` | Debug output |
+|Option                    |Description                                                       |
+|--------------------------|------------------------------------------------------------------|
+|`--session <name>`        |Use isolated session (or `AGENT_BROWSER_SESSION` env)             |
+|`--headers <json>`        |Set HTTP headers scoped to the URL’s origin                       |
+|`--executable-path <path>`|Custom browser executable (or `AGENT_BROWSER_EXECUTABLE_PATH` env)|
+|`--json`                  |JSON output (for agents)                                          |
+|`--full, -f`              |Full page screenshot                                              |
+|`--name, -n`              |Locator name filter                                               |
+|`--exact`                 |Exact text match                                                  |
+|`--headed`                |Show browser window (not headless)                                |
+|`--cdp <port>`            |Connect via Chrome DevTools Protocol                              |
+|`--debug`                 |Debug output                                                      |
 
 ## Selectors
 
@@ -428,6 +582,7 @@ z-agent-browser hover @e4                   # Hover the link
 ```
 
 **Why use refs?**
+
 - **Deterministic**: Ref points to exact element from snapshot
 - **Fast**: No DOM re-query needed
 - **AI-friendly**: Snapshot + ref workflow is optimal for LLMs
@@ -509,6 +664,7 @@ z-agent-browser open other-site.com
 ```
 
 This is useful for:
+
 - **Skipping login flows** - Authenticate via headers instead of UI
 - **Switching users** - Start new sessions with different auth tokens
 - **API testing** - Access protected endpoints directly
@@ -530,6 +686,7 @@ z-agent-browser set headers '{"X-Custom-Header": "value"}'
 ## Custom Browser Executable
 
 Use a custom browser executable instead of the bundled Chromium. This is useful for:
+
 - **Serverless deployment**: Use lightweight Chromium builds like `@sparticuz/chromium` (~50MB vs ~684MB)
 - **System browsers**: Use an existing Chrome/Chromium installation
 - **Custom builds**: Use modified browser builds
@@ -579,6 +736,7 @@ z-agent-browser --cdp 9222 snapshot
 ```
 
 This enables control of:
+
 - Your real Chrome browser with saved passwords
 - Electron apps
 - Chrome/Chromium instances with remote debugging
@@ -597,55 +755,9 @@ google-chrome --headless=new --remote-debugging-port=9222 &
 
 **For headless automation without real Chrome**, use State Save/Load instead (see above).
 
-## Playwright MCP Mode (Experimental)
-
-Control your existing browser session via the [Playwright MCP](https://github.com/microsoft/playwright-mcp) bridge extension. This allows AI agents to automate your actual browser instead of a separate headless instance.
-
-### Setup
-
-1. **Install the Chrome extension**
-   - Install "Playwright MCP Bridge" from the Chrome Web Store
-   - Or load unpacked from the playwright-mcp repo's `extension/` directory
-
-2. **Set your extension token and run**
-   ```bash
-   # Set the token from the Chrome extension
-   export PLAYWRIGHT_MCP_EXTENSION_TOKEN=your-token-here
-   export AGENT_BROWSER_BACKEND=playwright-mcp
-   
-   # Commands work the same as native mode
-   z-agent-browser open "https://example.com"
-   z-agent-browser snapshot -i
-   z-agent-browser click @e1
-   z-agent-browser back
-   z-agent-browser close
-   ```
-
-The daemon spawns `npx @playwright/mcp@latest --extension` as a subprocess and communicates via stdio. No separate server needed.
-
-### Environment Variables
-
-| Variable | Description |
-|----------|-------------|
-| `AGENT_BROWSER_BACKEND` | Set to `playwright-mcp` to use MCP mode (default: `native`) |
-| `PLAYWRIGHT_MCP_EXTENSION_TOKEN` | Token from the Chrome extension (required for extension mode) |
-| `PLAYWRIGHT_MCP_COMMAND` | Custom command to spawn MCP server (default: `npx`) |
-| `PLAYWRIGHT_MCP_ARGS` | Space-separated args (default: `@playwright/mcp@latest --extension`) |
-
-### Limitations
-
-- **Feature parity**: Not all commands are supported. Streaming, state save/load, and stealth mode are not available in MCP mode.
-- **Extension required**: The Chrome extension must be installed and connected for the MCP server to control your browser.
-
-### Use Cases
-
-- **AI-assisted browsing**: Let AI agents help you navigate complex web apps in your actual browser
-- **Testing with extensions**: Test sites that require specific browser extensions
-- **Debugging**: Watch AI actions in real-time in your browser
-
 ## Streaming (Browser Preview)
 
-Stream the browser viewport via WebSocket for live preview or "pair browsing" where a human can watch and interact alongside an AI agent.
+Stream the browser viewport via WebSocket for live preview or “pair browsing” where a human can watch and interact alongside an AI agent.
 
 ### Enable Streaming
 
@@ -662,6 +774,7 @@ This starts a WebSocket server on the specified port that streams the browser vi
 Connect to `ws://localhost:9223` to receive frames and send input:
 
 **Receive frames:**
+
 ```json
 {
   "type": "frame",
@@ -678,6 +791,7 @@ Connect to `ws://localhost:9223` to receive frames and send input:
 ```
 
 **Send mouse events:**
+
 ```json
 {
   "type": "input_mouse",
@@ -690,6 +804,7 @@ Connect to `ws://localhost:9223` to receive frames and send input:
 ```
 
 **Send keyboard events:**
+
 ```json
 {
   "type": "input_keyboard",
@@ -700,6 +815,7 @@ Connect to `ws://localhost:9223` to receive frames and send input:
 ```
 
 **Send touch events:**
+
 ```json
 {
   "type": "input_touch",
@@ -755,8 +871,8 @@ await browser.stopScreencast();
 z-agent-browser uses a client-daemon architecture:
 
 1. **Rust CLI** (fast native binary) - Parses commands, communicates with daemon
-2. **Node.js Daemon** - Manages Playwright browser instance
-3. **Fallback** - If native binary unavailable, uses Node.js directly
+1. **Node.js Daemon** - Manages Playwright browser instance
+1. **Fallback** - If native binary unavailable, uses Node.js directly
 
 The daemon starts automatically on first command and persists between commands for fast subsequent operations.
 
@@ -764,13 +880,13 @@ The daemon starts automatically on first command and persists between commands f
 
 ## Platforms
 
-| Platform | Binary | Fallback |
-|----------|--------|----------|
-| macOS ARM64 | Native Rust | Node.js |
-| macOS x64 | Native Rust | Node.js |
-| Linux ARM64 | Native Rust | Node.js |
-| Linux x64 | Native Rust | Node.js |
-| Windows x64 | Native Rust | Node.js |
+|Platform   |Binary     |Fallback|
+|-----------|-----------|--------|
+|macOS ARM64|Native Rust|Node.js |
+|macOS x64  |Native Rust|Node.js |
+|Linux ARM64|Native Rust|Node.js |
+|Linux x64  |Native Rust|Node.js |
+|Windows x64|Native Rust|Node.js |
 
 ## Usage with AI Agents
 
@@ -817,166 +933,13 @@ curl -o ~/.claude/skills/browser-automation/skill.md \
   https://raw.githubusercontent.com/zm2231/browser-skill/main/skills/browser-automation/skill.md
 ```
 
-## Enhanced Fork Features
-
-This fork (zm2231/agent-browser) adds features for bot detection bypass, persistent auth, custom profiles, and more.
-
-### Installation (Enhanced Fork)
-
-```bash
-git clone https://github.com/zm2231/agent-browser.git
-cd agent-browser
-pnpm install
-pnpm build
-pnpm build:native   # requires Rust: https://rustup.rs
-npm link
-z-agent-browser install
-```
-
-### Stealth Mode
-
-Bypass bot detection using playwright-extra with stealth plugin:
-
-```bash
-z-agent-browser --stealth open https://bot.sannysoft.com
-z-agent-browser snapshot -i
-# Basic bot detection tests pass
-
-# Via environment variable
-AGENT_BROWSER_STEALTH=1 z-agent-browser open https://example.com
-```
-
-Stealth mode applies evasions for: WebDriver detection, Chrome automation flags, permissions, plugins, languages, WebGL, and more.
-
-#### Stealth Mode: Honest Limitations
-
-Stealth mode is **not a silver bullet**. Based on 2024-2025 research:
-
-| Protection | Success Rate | Notes |
-|------------|--------------|-------|
-| Basic bot detection | ~60-80% | Simple WAFs, basic fingerprinting |
-| Simple e-commerce | ~60-70% | Sites without advanced protection |
-| DataDome | **~0%** | They detect stealth plugin in 4 lines of JS |
-| Modern Cloudflare (Turnstile) | ~10-20% | Only basic challenges work |
-| **Google/Gmail** | **<5%** | Use [hybrid workflow](#gmailgoogle-login-hybrid-workflow) instead |
-
-**For Google/Gmail:** Stealth alone will NOT work. Use the hybrid CDP workflow (login in real Chrome → save state → use in stealth automation). This is why z-browser documents and supports that workflow.
-
-**For enterprise anti-bot (DataDome, Cloudflare ML):** Consider commercial services (ZenRows, Bright Data) or residential proxies with CAPTCHA solving.
-
-### Auto-Persistence
-
-Save and restore auth state automatically between sessions:
-
-```bash
-# First session: log in with --persist
-z-agent-browser --persist open "https://github.com/login" --headed
-# User logs in manually
-z-agent-browser close   # State saved to ~/.z-agent-browser/sessions/default.json
-
-# Later sessions: auth restored automatically
-z-agent-browser --persist open "https://github.com"   # Already logged in
-```
-
-Use explicit state file:
-```bash
-z-agent-browser --state ~/github-auth.json open "https://github.com"
-```
-
-### Login Persistence (State Save/Load)
-
-Save login sessions to a JSON file and restore them later:
-
-```bash
-# First time: Login manually in headed mode
-z-agent-browser start --headed
-z-agent-browser open "https://github.com"
-# [User logs in manually]
-z-agent-browser state save ~/.z-agent-browser/github.json
-z-agent-browser stop
-
-# Later: Restore session headlessly
-z-agent-browser start
-z-agent-browser state load ~/.z-agent-browser/github.json
-z-agent-browser open "https://github.com"  # Already logged in!
-```
-
-**Key points:**
-- Saves cookies, localStorage, sessionStorage to JSON file
-- Portable across sessions and restarts
-- Works on both Mac and Linux
-- Default state path: `~/.z-agent-browser/default-state.json`
-
-**Headless Limitation:** Google, Gmail, and other strict sites detect headless Chromium and invalidate sessions. For these sites, use `--headed` or CDP Mode with real Chrome.app.
-
-**State Save/Load vs CDP Mode:**
-
-| Feature | State Save/Load | CDP Mode |
-|---------|-----------------|----------|
-| Command | `state save/load <path>` | `connect <port>` |
-| Headless support | Yes | Depends on how Chrome was launched |
-| Saved passwords | No (session cookies only) | Yes (real Chrome) |
-| Best for | Background automation | Real Chrome, saved passwords, CAPTCHA |
-
-### Gmail/Google Login (Hybrid Workflow)
-
-Google detects Playwright (even stealth mode) and blocks automated login. This hybrid workflow **actually works** - tested successfully for reading Gmail.
-
-**Why this only works in z-browser:**
-
-| Step | Vercel v0.6.0 | z-browser |
-|------|---------------|-----------|
-| `connect 9222` | ✅ Works | ✅ Works |
-| `state save` | ✅ Works | ✅ Works |
-| `state load` (runtime) | ❌ Returns "must load at launch" | ✅ Actually loads cookies |
-| `--stealth` mode | ❌ Doesn't exist | ✅ Bypasses basic detection |
-
-Even if Vercel users restart with `--state` at launch, they lack stealth mode - so Google may detect and invalidate the session.
-
-**Key insight:** Real Chrome bypasses Google's bot detection for login. Once cookies are saved, stealth Playwright can use them.
-
-```bash
-# 1. Copy real Chrome profile to separate location (one-time)
-cp -R "$HOME/Library/Application Support/Google/Chrome" ~/.z-agent-browser/cdp-profile
-
-# 2. Kill existing Chrome & launch with CDP
-killall "Google Chrome"
-"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
-  --remote-debugging-port=9222 \
-  --user-data-dir="$HOME/.z-agent-browser/cdp-profile" &
-
-# 3. Connect via CDP
-z-agent-browser connect 9222
-
-# 4. Open Gmail - user completes login if needed
-z-agent-browser open "https://mail.google.com"
-# User sees real Chrome window, completes any 2FA/confirmation
-
-# 5. Save state for future use
-z-agent-browser state save ~/.z-agent-browser/gmail-state.json
-
-# 6. Quit CDP Chrome
-z-agent-browser close
-killall "Google Chrome"
-
-# 7. Now stealth mode works with saved cookies
-z-agent-browser start --stealth
-z-agent-browser state load ~/.z-agent-browser/gmail-state.json
-z-agent-browser open "https://mail.google.com"
-# Logged in! ✅
-```
-
-**Why this works:** Real Chrome passes Google's bot detection during login. Once you have valid session cookies saved, stealth Playwright can use them for reading emails and navigation.
-
-**Important:** Session cookies may expire. Re-run steps 2-6 periodically to refresh.
-
-### Custom User-Agent
+## Custom User-Agent
 
 ```bash
 z-agent-browser --user-agent "MyBot/1.0 (compatible)" open https://httpbin.org/user-agent
 ```
 
-### Browser Launch Arguments
+## Browser Launch Arguments
 
 Pass custom Chromium flags:
 
@@ -985,12 +948,13 @@ z-agent-browser --args "--disable-gpu,--no-sandbox" open https://example.com
 ```
 
 Common args:
+
 - `--disable-gpu`: disable GPU acceleration
 - `--no-sandbox`: required in some Docker containers
 - `--disable-dev-shm-usage`: overcome limited /dev/shm in Docker
 - `--window-size=1920,1080`: set initial window size
 
-### HTTPS Certificate Errors
+## HTTPS Certificate Errors
 
 Skip SSL validation for local dev servers with self-signed certs:
 
@@ -998,13 +962,14 @@ Skip SSL validation for local dev servers with self-signed certs:
 z-agent-browser --ignore-https-errors open "https://localhost:8443"
 ```
 
-**Note**: When changing launch options (like --ignore-https-errors), kill any existing daemon first:
+**Note**: When changing launch options (like –ignore-https-errors), kill any existing daemon first:
+
 ```bash
 pkill -f "node.*daemon"; sleep 1
 z-agent-browser --ignore-https-errors open "https://localhost:8443"
 ```
 
-### Video Recording
+## Video Recording
 
 Record browser sessions to WebM:
 
@@ -1022,7 +987,7 @@ z-agent-browser record restart ./take2.webm
 
 Recording creates a fresh context but preserves cookies and storage.
 
-### Tab New with URL
+## Tab New with URL
 
 Open new tab directly at a URL:
 
@@ -1030,7 +995,7 @@ Open new tab directly at a URL:
 z-agent-browser tab new https://example.com
 ```
 
-### Screenshot to Base64
+## Screenshot to Base64
 
 Omit path to get base64-encoded PNG:
 
@@ -1039,7 +1004,7 @@ z-agent-browser screenshot --json
 # Returns: {"success":true,"data":{"base64":"iVBORw0KGgo..."}}
 ```
 
-### Runtime State Load
+## Runtime State Load
 
 Load auth state into a running browser (not just at launch):
 
@@ -1048,9 +1013,9 @@ z-agent-browser open "https://github.com"
 z-agent-browser state load ~/.browser/github-auth.json   # Loads into current session
 ```
 
-### Connect Command
+## Connect Command
 
-Establish persistent CDP connection; subsequent commands omit --cdp:
+Establish persistent CDP connection; subsequent commands omit –cdp:
 
 ```bash
 # Start Chrome with remote debugging
@@ -1066,7 +1031,7 @@ z-agent-browser snapshot -i
 z-agent-browser close
 ```
 
-### Special URL Schemes
+## Special URL Schemes
 
 Support for about:, data:, and file: URLs:
 
@@ -1076,30 +1041,31 @@ z-agent-browser open "data:text/html,<h1>Hello</h1>"
 z-agent-browser open "file:///path/to/local.html"
 ```
 
-### Environment Variables
+## Environment Variables
 
-| Variable | Description |
-|----------|-------------|
-| `AGENT_BROWSER_SESSION` | Session name for isolation |
-| `AGENT_BROWSER_HEADED` | Set to "1" for visible browser |
-| `AGENT_BROWSER_STEALTH` | Set to "1" for stealth mode |
-| `AGENT_BROWSER_PERSIST` | Set to "1" for auto-persistence |
-| `AGENT_BROWSER_STATE` | Path to state file |
-| `AGENT_BROWSER_PROFILE` | Path to Chrome profile directory |
-| `AGENT_BROWSER_USER_AGENT` | Custom User-Agent string |
-| `AGENT_BROWSER_ARGS` | Comma-separated browser launch args |
-| `AGENT_BROWSER_IGNORE_HTTPS_ERRORS` | Set to "1" to skip SSL validation |
-| `AGENT_BROWSER_EXECUTABLE_PATH` | Custom browser binary path |
-| `AGENT_BROWSER_EXTENSIONS` | Path to browser extensions |
-| `AGENT_BROWSER_STREAM_PORT` | WebSocket port for streaming |
-| `AGENT_BROWSER_BACKEND` | Backend type: `native` (default) or `playwright-mcp` |
-| `PLAYWRIGHT_MCP_COMMAND` | Command to spawn MCP server (default: `npx`) |
-| `PLAYWRIGHT_MCP_ARGS` | Space-separated args for MCP server (default: `@playwright/mcp@latest`) |
-| `NO_COLOR` | Disable colored output |
+|Variable                           |Description                                                            |
+|-----------------------------------|-----------------------------------------------------------------------|
+|`AGENT_BROWSER_SESSION`            |Session name for isolation                                             |
+|`AGENT_BROWSER_HEADED`             |Set to “1” for visible browser                                         |
+|`AGENT_BROWSER_STEALTH`            |Set to “1” for stealth mode                                            |
+|`AGENT_BROWSER_PERSIST`            |Set to “1” for auto-persistence                                        |
+|`AGENT_BROWSER_STATE`              |Path to state file                                                     |
+|`AGENT_BROWSER_PROFILE`            |Path to Chrome profile directory                                       |
+|`AGENT_BROWSER_USER_AGENT`         |Custom User-Agent string                                               |
+|`AGENT_BROWSER_ARGS`               |Comma-separated browser launch args                                    |
+|`AGENT_BROWSER_IGNORE_HTTPS_ERRORS`|Set to “1” to skip SSL validation                                      |
+|`AGENT_BROWSER_EXECUTABLE_PATH`    |Custom browser binary path                                             |
+|`AGENT_BROWSER_EXTENSIONS`         |Path to browser extensions                                             |
+|`AGENT_BROWSER_STREAM_PORT`        |WebSocket port for streaming                                           |
+|`AGENT_BROWSER_BACKEND`            |Backend type: `native` (default) or `playwright-mcp`                   |
+|`PLAYWRIGHT_MCP_COMMAND`           |Command to spawn MCP server (default: `npx`)                           |
+|`PLAYWRIGHT_MCP_ARGS`              |Space-separated args for MCP server (default: `@playwright/mcp@latest`)|
+|`NO_COLOR`                         |Disable colored output                                                 |
 
-### Known Issues
+## Known Issues
 
-**--ignore-https-errors with existing daemon**: If daemon already has a browser context, new launch options may not apply. Kill daemon before changing options:
+**–ignore-https-errors with existing daemon**: If daemon already has a browser context, new launch options may not apply. Kill daemon before changing options:
+
 ```bash
 pkill -f "node.*daemon"
 ```
