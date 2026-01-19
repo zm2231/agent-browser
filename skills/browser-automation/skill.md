@@ -16,7 +16,7 @@ requires:
 | **Native** (default) | General automation, scraping, testing | Nothing extra |
 | **Native + Stealth** | Sites with bot detection (Cloudflare, etc.) | Nothing extra |
 | **CDP (Real Chrome)** | Saved passwords, CAPTCHA, 2FA, Google/Gmail | Chrome running with `--remote-debugging-port=9222` |
-| **Playwright MCP** | Control user's existing Chrome tabs | Chrome extension + token |
+| **Playwright MCP** | Control user's existing Chrome tabs | [Extension from GitHub](https://github.com/microsoft/playwright-mcp/releases) + token |
 
 **Ask the user:**
 > "I can automate browsers in a few ways:
@@ -56,7 +56,8 @@ z-agent-browser start --stealth
 # Then launch: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --remote-debugging-port=9222 --user-data-dir="$HOME/.z-agent-browser/chrome-profile" &
 z-agent-browser connect 9222
 
-# Playwright MCP - user must set env vars first:
+# Playwright MCP - requires extension from https://github.com/microsoft/playwright-mcp/releases
+# Load unpacked in chrome://extensions, get token from extension icon, then:
 # export PLAYWRIGHT_MCP_EXTENSION_TOKEN=<token>
 # export AGENT_BROWSER_BACKEND=playwright-mcp
 z-agent-browser open <url>
