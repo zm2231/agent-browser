@@ -8,22 +8,29 @@ Enhanced fork of [vercel-labs/agent-browser](https://github.com/vercel-labs/agen
 
 ## Highlights
 
-- **Gmail/Google support** via [hybrid CDP workflow](#gmailgoogle-login-hybrid-workflow) - login in real Chrome, use sessions in headless stealth
-- **Stealth mode** bypasses most bot detection
-- **State save/load** persists login sessions to JSON
-- **CDP mode** connects to real Chrome with saved passwords
+- **Gmail/Google support** via [hybrid CDP workflow](#gmailgoogle-login-hybrid-workflow) - login in real Chrome, use sessions in stealth automation
+- **Stealth mode** bypasses basic bot detection (not Google - see [limitations](#stealth-mode-honest-limitations))
+- **Runtime state load** - load auth into running browser, not just at launch
+- **Auto-persistence** - automatic state save/restore between sessions
+- **CDP flexibility** - connect via port numbers OR WebSocket URLs
 
 ## What's Different
 
-| Feature | Upstream | This Fork |
-|---------|----------|-----------|
-| **Browser Modes** | Headless only | Headless, Headed, Stealth, CDP |
-| **Login Persistence** | None | State save/load to JSON |
-| **Bot Detection** | Detected | Stealth mode bypasses most |
-| **Gmail/Google** | Blocked | Hybrid workflow (CDP → state → stealth) |
-| **Lifecycle Control** | Implicit | Explicit `start`/`stop`/`status` |
-| **Real Chrome** | No | CDP mode for saved passwords |
-| **Streaming** | No | WebSocket viewport streaming |
+*Compared to upstream [vercel-labs/agent-browser](https://github.com/vercel-labs/agent-browser) v0.6.0 (Jan 2026)*
+
+| Feature | Upstream (v0.6.0) | This Fork |
+|---------|-------------------|-----------|
+| **Stealth Mode** | ❌ | ✅ playwright-extra integration |
+| **Runtime State Load** | ❌ Returns "must load at launch" | ✅ Actually loads cookies + localStorage |
+| **Auto-Persistence** | ❌ | ✅ `--persist` flag for automatic save/restore |
+| **Lifecycle Control** | Implicit | ✅ Explicit `start`/`stop`/`status`/`configure` |
+| **CDP Flexibility** | Port numbers only | ✅ Port + WebSocket URLs (`ws://`) |
+| **Auto-detect Chrome** | ❌ | ✅ Finds system Chrome automatically |
+| **Gmail Hybrid Workflow** | Not documented | ✅ Documented workflow that works |
+| **Profile Mode** | ❌ | ✅ `--profile` for persistent Chrome profile |
+| **Playwright MCP Backend** | ❌ | ✅ Control existing Chrome via extension |
+
+**Note:** Upstream v0.6.0 added `connect` command, video recording, and `--proxy` flag. Both now have streaming. The key differences are in **usability** and **workflow support** - z-browser provides the tools needed for real-world AI agent tasks like authenticated automation.
 
 ## Browser Modes
 
@@ -833,13 +840,29 @@ Bypass bot detection using playwright-extra with stealth plugin:
 ```bash
 z-agent-browser --stealth open https://bot.sannysoft.com
 z-agent-browser snapshot -i
-# Most bot detection tests pass
+# Basic bot detection tests pass
 
 # Via environment variable
 AGENT_BROWSER_STEALTH=1 z-agent-browser open https://example.com
 ```
 
 Stealth mode applies evasions for: WebDriver detection, Chrome automation flags, permissions, plugins, languages, WebGL, and more.
+
+#### Stealth Mode: Honest Limitations
+
+Stealth mode is **not a silver bullet**. Based on 2024-2025 research:
+
+| Protection | Success Rate | Notes |
+|------------|--------------|-------|
+| Basic bot detection | ~60-80% | Simple WAFs, basic fingerprinting |
+| Simple e-commerce | ~60-70% | Sites without advanced protection |
+| DataDome | **~0%** | They detect stealth plugin in 4 lines of JS |
+| Modern Cloudflare (Turnstile) | ~10-20% | Only basic challenges work |
+| **Google/Gmail** | **<5%** | Use [hybrid workflow](#gmailgoogle-login-hybrid-workflow) instead |
+
+**For Google/Gmail:** Stealth alone will NOT work. Use the hybrid CDP workflow (login in real Chrome → save state → use in stealth automation). This is why z-browser documents and supports that workflow.
+
+**For enterprise anti-bot (DataDome, Cloudflare ML):** Consider commercial services (ZenRows, Bright Data) or residential proxies with CAPTCHA solving.
 
 ### Auto-Persistence
 
@@ -897,7 +920,31 @@ z-agent-browser open "https://github.com"  # Already logged in!
 
 ### Gmail/Google Login (Hybrid Workflow)
 
-Google detects Playwright (even stealth mode) and blocks login. Solution: login via real Chrome CDP, capture state, use in Playwright.
+Google detects Playwright (even stealth mode) and blocks automated login. This hybrid workflow **actually works** - tested successfully for reading Gmail:
+
+**The key insight:** Google validates during LOGIN (detecting automation), but accepts valid cookies afterward. Get cookies from real Chrome, use them in stealth automation.
+
+#### Option 1: AI-Assisted Login (Recommended)
+
+Let your AI agent handle the workflow. The agent can:
+1. Detect that headed mode is needed for login
+2. Switch to `--headed` mode
+3. Prompt you to login manually in the visible browser
+4. Save state after login
+5. Continue automation in stealth mode
+
+```bash
+# AI agent workflow (what actually worked):
+z-agent-browser start --headed        # Agent switches to headed
+z-agent-browser open "https://mail.google.com"
+# User logs in manually when prompted
+z-agent-browser state save ~/.z-agent-browser/gmail-state.json
+z-agent-browser configure --stealth   # Switch to stealth
+z-agent-browser state load ~/.z-agent-browser/gmail-state.json
+# Now automation works!
+```
+
+#### Option 2: Manual CDP Workflow
 
 ```bash
 # 1. Copy your Chrome profile (one-time)
@@ -925,7 +972,9 @@ z-agent-browser state load ~/.z-agent-browser/gmail-state.json
 z-agent-browser open "https://mail.google.com"  # Logged in!
 ```
 
-**Why this works:** Google validates the session during login (detecting Playwright), but once you have valid cookies from real Chrome, Playwright can use them.
+**Why this works:** Google validates the session during login (detecting Playwright), but once you have valid cookies from real Chrome, Playwright stealth can use them for reading/navigation.
+
+**Important:** Session cookies may expire. Re-run the login workflow periodically.
 
 ### Custom User-Agent
 
