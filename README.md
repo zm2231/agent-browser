@@ -14,11 +14,48 @@ Fork of [vercel-labs/agent-browser](https://github.com/vercel-labs/agent-browser
 - **Multiple connection modes, same interface** - Headless for background automation, headed when you need to see what’s happening, extension mode for existing tabs, profile mode to preserve logins. Pick the right tool for the task; CLI stays the same.
 - **Token efficiency** - Structured page access instead of screenshots. `snapshot -i` for navigation (~200-500 tokens), `eval` for data extraction (~10-100 tokens).
 - **Gmail/Google support** via [hybrid CDP workflow](#gmailgoogle-login-hybrid-workflow) - login in real Chrome, use sessions in stealth automation
-- **Stealth mode** - playwright-extra integration bypasses basic bot detection (not Google directly; see [limitations](#stealth-mode-honest-limitations))
-- **Runtime state load** - load auth cookies into a running browser, not just at launch
-- **Auto-persistence** - automatic state save/restore between sessions with `--persist`
-- **Connect to existing tabs** - via browser extension, no restart needed even with 40 tabs open
-- **CDP flexibility** - connect via port numbers or WebSocket URLs (`ws://`)
+- **Stealth mode** bypasses basic bot detection (not Google - see [limitations](#stealth-mode-honest-limitations))
+- **Runtime state load** - load auth into running browser, not just at launch
+- **Auto-persistence** - automatic state save/restore between sessions
+- **CDP flexibility** - connect via port numbers OR WebSocket URLs
+
+## What's Different
+
+*Compared to upstream [vercel-labs/agent-browser](https://github.com/vercel-labs/agent-browser) v0.6.0 (Jan 2026)*
+
+| Feature | Upstream (v0.6.0) | This Fork |
+|---------|-------------------|-----------|
+| **Stealth Mode** | ❌ | ✅ playwright-extra integration |
+| **Runtime State Load** | ❌ Returns "must load at launch" | ✅ Actually loads cookies + localStorage |
+| **Auto-Persistence** | ❌ | ✅ `--persist` flag for automatic save/restore |
+| **Lifecycle Control** | Implicit | ✅ Explicit `start`/`stop`/`status`/`configure` |
+| **CDP Flexibility** | Port numbers only | ✅ Port + WebSocket URLs (`ws://`) |
+| **Auto-detect Chrome** | ❌ | ✅ Finds system Chrome automatically |
+| **Gmail Hybrid Workflow** | Not documented | ✅ Documented workflow that works |
+| **Profile Mode** | ❌ | ✅ `--profile` for persistent Chrome profile |
+| **Playwright MCP Backend** | ❌ | ✅ Control existing Chrome via extension |
+
+**Note:** Upstream v0.6.0 added `connect` command, video recording, and `--proxy` flag. Both now have streaming. The key differences are in **usability** and **workflow support**.
+
+### Why This Matters for Authentication
+
+**Vercel's approach** requires AI to handle your credentials:
+```bash
+agent-browser fill @password "secretpassword"  # AI sees your password!
+# Fails on Google/Gmail - Chromium detected, login blocked entirely
+```
+
+**z-browser's approach** - user handles credentials, AI handles automation:
+```bash
+z-agent-browser connect 9222          # Connect to real Chrome  
+# User logs in manually (AI never sees password)
+z-agent-browser state save auth.json  # Save session
+z-agent-browser start --stealth       # Switch to stealth
+z-agent-browser state load auth.json  # Runtime load (z-browser only!)
+# Now AI can automate with valid session
+```
+
+This is why the [Gmail hybrid workflow](#gmailgoogle-login-hybrid-workflow) works in z-browser but not in Vercel - it requires runtime state load + stealth mode.
 
 ## Browser Modes
 
@@ -329,7 +366,7 @@ z-agent-browser screenshot [path]       # Take screenshot (--full for full page)
 z-agent-browser pdf <path>              # Save as PDF
 z-agent-browser snapshot                # Accessibility tree with refs (best for AI)
 z-agent-browser eval <js>               # Run JavaScript
-z-agent-browser connect <port>          # Connect to browser via CDP
+z-agent-browser connect <port|ws://>    # Connect to browser via CDP (port or WebSocket URL)
 z-agent-browser close                   # Close browser (aliases: quit, exit)
 ```
 
@@ -705,7 +742,7 @@ AGENT_BROWSER_EXECUTABLE_PATH=/path/to/chromium z-agent-browser open example.com
 
 ```typescript
 import chromium from '@sparticuz/chromium';
-import { BrowserManager } from 'agent-browser';
+import { BrowserManager } from 'z-agent-browser';
 
 export async function handler() {
   const browser = new BrowserManager();
@@ -829,7 +866,7 @@ Connect to `ws://localhost:9223` to receive frames and send input:
 For advanced use, control streaming directly via the protocol:
 
 ```typescript
-import { BrowserManager } from 'agent-browser';
+import { BrowserManager } from 'z-agent-browser';
 
 const browser = new BrowserManager();
 await browser.launch({ headless: true });

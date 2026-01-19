@@ -1,0 +1,229 @@
+---
+name: browser-automation
+description: Automates browser interactions for web testing, form filling, screenshots, and data extraction. Use when user needs to navigate websites, interact with web pages, fill forms, take screenshots, or extract information.
+requires:
+  bins: [z-agent-browser]
+---
+
+# Browser Automation with z-agent-browser
+
+## Core Workflow
+
+1. **Navigate**: `z-agent-browser open <url>`
+2. **Snapshot**: `z-agent-browser snapshot -i` (returns refs like `@e1`, `@e2`)
+3. **Interact** using refs from snapshot
+4. **Re-snapshot** after navigation or DOM changes
+
+## Token Efficiency: eval vs snapshot
+
+**Use `snapshot -i` for navigation** (finding what to click):
+```bash
+z-agent-browser snapshot -i   # ~200-500 tokens
+```
+
+**Use `eval` for data extraction** (getting information):
+```bash
+z-agent-browser eval "document.querySelectorAll('.item').length"
+z-agent-browser eval "[...document.querySelectorAll('a')].map(a => a.href)"
+```
+
+| Task | Best Tool | Tokens |
+|------|-----------|--------|
+| Find button to click | `snapshot -i` | ~200-500 |
+| Count items on page | `eval` | ~10 |
+| Extract all links/data | `eval` | ~50-100 |
+| Fill a form | `snapshot -i` + refs | ~200-500 |
+
+**Rule**: Need to CLICK? → snapshot. Need to READ/EXTRACT? → eval.
+
+## Commands
+
+### Browser Lifecycle
+```bash
+z-agent-browser start                 # Start headless browser
+z-agent-browser start --headed        # Start visible browser
+z-agent-browser start --stealth       # Start with anti-detection
+z-agent-browser status                # Check current mode
+z-agent-browser stop                  # Stop browser
+z-agent-browser connect 9222          # Connect to Chrome via CDP
+```
+
+### Navigation
+```bash
+z-agent-browser open <url>            # Navigate to URL
+z-agent-browser back                  # Go back
+z-agent-browser forward               # Go forward
+z-agent-browser reload                # Reload page
+z-agent-browser close                 # Close browser
+```
+
+### Snapshot (page analysis)
+```bash
+z-agent-browser snapshot              # Full accessibility tree
+z-agent-browser snapshot -i           # Interactive elements only (recommended)
+z-agent-browser snapshot -c           # Compact output
+z-agent-browser snapshot -d 3         # Limit depth to 3
+z-agent-browser snapshot -s "#main"   # Scope to CSS selector
+```
+
+### Interactions (use @refs from snapshot)
+```bash
+z-agent-browser click @e1             # Click
+z-agent-browser dblclick @e1          # Double-click
+z-agent-browser fill @e2 "text"       # Clear and type
+z-agent-browser type @e2 "text"       # Type without clearing
+z-agent-browser press Enter           # Press key
+z-agent-browser press Control+a       # Key combination
+z-agent-browser hover @e1             # Hover
+z-agent-browser check @e1             # Check checkbox
+z-agent-browser uncheck @e1           # Uncheck checkbox
+z-agent-browser select @e1 "value"    # Select dropdown
+z-agent-browser scroll down 500       # Scroll page
+z-agent-browser scrollintoview @e1    # Scroll element into view
+z-agent-browser drag @e1 @e2          # Drag and drop
+z-agent-browser upload @e1 file.pdf   # Upload files
+```
+
+### Get Information
+```bash
+z-agent-browser get text @e1          # Get element text
+z-agent-browser get html @e1          # Get innerHTML
+z-agent-browser get value @e1         # Get input value
+z-agent-browser get attr @e1 href     # Get attribute
+z-agent-browser get title             # Get page title
+z-agent-browser get url               # Get current URL
+z-agent-browser get count ".item"     # Count matching elements
+```
+
+### Check State
+```bash
+z-agent-browser is visible @e1        # Check if visible
+z-agent-browser is enabled @e1        # Check if enabled
+z-agent-browser is checked @e1        # Check if checked
+```
+
+### Screenshots & PDF
+```bash
+z-agent-browser screenshot            # Screenshot to stdout (base64)
+z-agent-browser screenshot path.png   # Save to file
+z-agent-browser screenshot --full     # Full page
+z-agent-browser pdf output.pdf        # Save as PDF
+```
+
+### State Persistence
+```bash
+z-agent-browser state save auth.json  # Save cookies/localStorage
+z-agent-browser state load auth.json  # Restore session
+```
+
+### Video Recording
+```bash
+z-agent-browser record start demo.webm    # Start recording
+z-agent-browser record stop               # Stop and save
+z-agent-browser record restart take2.webm # Restart with new file
+```
+
+### Wait
+```bash
+z-agent-browser wait @e1                  # Wait for element
+z-agent-browser wait 2000                 # Wait milliseconds
+z-agent-browser wait --text "Success"     # Wait for text
+z-agent-browser wait --url "**/dashboard" # Wait for URL pattern
+z-agent-browser wait --load networkidle   # Wait for network idle
+```
+
+### JavaScript
+```bash
+z-agent-browser eval "document.title"
+z-agent-browser eval "[...document.querySelectorAll('a')].map(a => a.href)"
+```
+
+### Browser Settings
+```bash
+z-agent-browser set viewport 1920 1080
+z-agent-browser set device "iPhone 14"
+z-agent-browser set headers '{"X-Key":"v"}'
+```
+
+### Tabs
+```bash
+z-agent-browser tab                   # List tabs
+z-agent-browser tab new [url]         # New tab
+z-agent-browser tab 2                 # Switch to tab
+z-agent-browser tab close             # Close tab
+```
+
+### Debug
+```bash
+z-agent-browser console               # View console messages
+z-agent-browser errors                # View page errors
+z-agent-browser highlight @e1         # Highlight element
+```
+
+## Login Persistence
+
+Use `state save/load` to persist login sessions:
+
+```bash
+# First time: Login manually in headed mode
+z-agent-browser start --headed
+z-agent-browser open "https://github.com"
+# [User logs in manually]
+z-agent-browser state save ~/.z-agent-browser/github.json
+z-agent-browser stop
+
+# Later: Restore session headlessly
+z-agent-browser start
+z-agent-browser state load ~/.z-agent-browser/github.json
+z-agent-browser open "https://github.com"  # Already logged in!
+```
+
+## CDP Mode (Real Chrome)
+
+For CAPTCHA, 2FA, or using saved passwords:
+
+```bash
+"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+  --remote-debugging-port=9222 &
+
+z-agent-browser connect 9222
+z-agent-browser open "https://github.com"  # Uses real Chrome
+```
+
+## Gmail/Google (Hybrid Workflow)
+
+Google blocks Chromium automation. Use real Chrome for login, then stealth for automation:
+
+```bash
+# 1. Copy Chrome profile (one-time)
+cp -R "$HOME/Library/Application Support/Google/Chrome" ~/.z-agent-browser/cdp-profile
+
+# 2. Launch real Chrome with CDP
+killall "Google Chrome"
+"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+  --remote-debugging-port=9222 \
+  --user-data-dir="$HOME/.z-agent-browser/cdp-profile" &
+
+# 3. Connect and login if needed
+z-agent-browser connect 9222
+z-agent-browser open "https://mail.google.com"
+# User completes login in Chrome window
+
+# 4. Save state
+z-agent-browser state save ~/.z-agent-browser/gmail-state.json
+z-agent-browser close && killall "Google Chrome"
+
+# 5. Use stealth with saved state
+z-agent-browser start --stealth
+z-agent-browser state load ~/.z-agent-browser/gmail-state.json
+z-agent-browser open "https://mail.google.com"  # Logged in!
+```
+
+## Important Notes
+
+1. **Always use `snapshot -i`** to reduce output size
+2. **Use refs (@e1, @e2)** from snapshot, not CSS selectors
+3. **Re-snapshot after navigation** - refs change when page changes
+4. **Save state after login** - `state save` persists sessions
+5. **For Google/Gmail** - use hybrid CDP workflow, not direct login
+6. **Use `eval` for extraction** - much more token efficient than parsing snapshots
